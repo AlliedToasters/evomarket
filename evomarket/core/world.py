@@ -60,6 +60,8 @@ class WorldConfig(BaseModel):
     max_pending_trades: int = 3
     death_treasury_return_pct: float = 0.5
     death_local_share_pct: float = 0.5
+    npc_budget_distribution: str = "equal"
+    treasury_min_reserve: Millicredits = 100_000
 
     @model_validator(mode="after")
     def _validate_config(self) -> WorldConfig:
