@@ -67,6 +67,8 @@ class WorldConfig(BaseModel):
     message_max_length: int = 500
     broadcast_history_limit: int = 20
     private_message_history_limit: int = 50
+    npc_budget_distribution: str = "equal"
+    treasury_min_reserve: Millicredits = 100_000
 
     @model_validator(mode="after")
     def _validate_config(self) -> WorldConfig:
@@ -327,6 +329,10 @@ class WorldState:
         delivered_messages: dict[str, list[Message]] | None = None,
         broadcast_history: dict[str, list[Message]] | None = None,
         next_message_seq: int = 0,
+        order_book: dict[str, object] | None = None,
+        trade_proposals: dict[str, object] | None = None,
+        trade_history: dict[str, list[object]] | None = None,
+        next_order_seq: int = 0,
     ) -> None:
         self.nodes = nodes
         self.agents = agents
@@ -340,6 +346,12 @@ class WorldState:
         self.delivered_messages: dict[str, list[Message]] = delivered_messages if delivered_messages is not None else {}
         self.broadcast_history: dict[str, list[Message]] = broadcast_history if broadcast_history is not None else {}
         self.next_message_seq = next_message_seq
+        # Trading state (typed as object to avoid circular import;
+        # actual types are PostedOrder, TradeProposal, TradeResult)
+        self.order_book: dict[str, object] = order_book if order_book is not None else {}
+        self.trade_proposals: dict[str, object] = trade_proposals if trade_proposals is not None else {}
+        self.trade_history: dict[str, list[object]] = trade_history if trade_history is not None else {}
+        self.next_order_seq: int = next_order_seq
 
     def verify_invariant(self) -> None:
         """Assert the fixed-supply invariant: all credits sum to total_supply."""
@@ -413,6 +425,40 @@ class WorldState:
             return 0
         return base_price * (capacity - stockpile) // capacity
 
+    def orders_at_node(self, node_id: str) -> list[object]:
+        """Return all active orders at the given node."""
+        from evomarket.engine.trading import OrderStatus
+
+        return [
+            o
+            for o in self.order_book.values()
+            if getattr(o, "node_id", None) == node_id
+            and getattr(o, "status", None) == OrderStatus.ACTIVE
+        ]
+
+    def orders_for_agent(self, agent_id: str) -> list[object]:
+        """Return all non-terminal orders for the given agent."""
+        from evomarket.engine.trading import OrderStatus
+
+        return [
+            o
+            for o in self.order_book.values()
+            if getattr(o, "poster_id", None) == agent_id
+            and getattr(o, "status", None)
+            in (OrderStatus.ACTIVE, OrderStatus.SUSPENDED)
+        ]
+
+    def pending_proposals_for_agent(self, agent_id: str) -> list[object]:
+        """Return all pending trade proposals where agent is proposer."""
+        from evomarket.engine.trading import TradeStatus
+
+        return [
+            p
+            for p in self.trade_proposals.values()
+            if getattr(p, "proposer_id", None) == agent_id
+            and getattr(p, "status", None) == TradeStatus.PENDING
+        ]
+
     def agents_at_node(self, node_id: str) -> list[Agent]:
         """Return all living agents at the given node."""
         return [a for a in self.agents.values() if a.alive and a.location == node_id]
@@ -423,6 +469,35 @@ class WorldState:
 
     def to_json(self) -> dict:
         """Serialize the entire world state to a JSON-compatible dict."""
+        from evomarket.engine.trading import PostedOrder, TradeProposal, TradeResult
+
+        def _serialize_trade_result(r: object) -> dict:
+            assert isinstance(r, TradeResult)
+            return {
+                "success": r.success,
+                "trade_type": r.trade_type,
+                "buyer_id": r.buyer_id,
+                "seller_id": r.seller_id,
+                "items_transferred": {k.value: v for k, v in r.items_transferred.items()},
+                "credits_transferred": r.credits_transferred,
+                "failure_reason": r.failure_reason,
+                "tick": r.tick,
+            }
+
+        order_book_json = {}
+        for oid, o in self.order_book.items():
+            assert isinstance(o, PostedOrder)
+            order_book_json[oid] = o.model_dump(mode="json")
+
+        proposals_json = {}
+        for tid, p in self.trade_proposals.items():
+            assert isinstance(p, TradeProposal)
+            proposals_json[tid] = p.model_dump(mode="json")
+
+        history_json: dict[str, list[dict]] = {}
+        for node_id, results in self.trade_history.items():
+            history_json[node_id] = [_serialize_trade_result(r) for r in results]
+
         return {
             "nodes": {nid: n.model_dump(mode="json") for nid, n in self.nodes.items()},
             "agents": {aid: a.model_dump(mode="json") for aid, a in self.agents.items()},
@@ -442,12 +517,22 @@ class WorldState:
                 for nid, msgs in self.broadcast_history.items()
             },
             "next_message_seq": self.next_message_seq,
+            "order_book": order_book_json,
+            "trade_proposals": proposals_json,
+            "trade_history": history_json,
+            "next_order_seq": self.next_order_seq,
         }
 
     @classmethod
     def from_json(cls, data: dict) -> WorldState:
         """Deserialize a world state from a JSON-compatible dict."""
         from evomarket.engine.communication import Message
+        from evomarket.engine.trading import (
+            CommodityType as CT,
+            PostedOrder,
+            TradeProposal,
+            TradeResult,
+        )
 
         nodes = {nid: Node.model_validate(ndata) for nid, ndata in data["nodes"].items()}
         agents = {aid: Agent.model_validate(adata) for aid, adata in data["agents"].items()}
@@ -467,6 +552,31 @@ class WorldState:
             for nid, msgs in data.get("broadcast_history", {}).items()
         }
 
+        # Deserialize trading state
+        order_book: dict[str, object] = {}
+        for oid, odata in data.get("order_book", {}).items():
+            order_book[oid] = PostedOrder.model_validate(odata)
+
+        trade_proposals: dict[str, object] = {}
+        for tid, pdata in data.get("trade_proposals", {}).items():
+            trade_proposals[tid] = TradeProposal.model_validate(pdata)
+
+        trade_history: dict[str, list[object]] = {}
+        for node_id, results in data.get("trade_history", {}).items():
+            trade_history[node_id] = [
+                TradeResult(
+                    success=r["success"],
+                    trade_type=r["trade_type"],
+                    buyer_id=r["buyer_id"],
+                    seller_id=r["seller_id"],
+                    items_transferred={CT(k): v for k, v in r["items_transferred"].items()},
+                    credits_transferred=r["credits_transferred"],
+                    failure_reason=r["failure_reason"],
+                    tick=r["tick"],
+                )
+                for r in results
+            ]
+
         return cls(
             nodes=nodes,
             agents=agents,
@@ -480,4 +590,8 @@ class WorldState:
             delivered_messages=delivered_messages,
             broadcast_history=broadcast_history,
             next_message_seq=data.get("next_message_seq", 0),
+            order_book=order_book,
+            trade_proposals=trade_proposals,
+            trade_history=trade_history,
+            next_order_seq=data.get("next_order_seq", 0),
         )
