@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import random
 from collections import deque
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from evomarket.core.agent import Agent
 from evomarket.core.resources import validate_resource_distribution
 from evomarket.core.types import CommodityType, Millicredits, NodeType
+
+if TYPE_CHECKING:
+    from evomarket.engine.communication import Message
 
 
 class Node(BaseModel):
@@ -60,6 +64,9 @@ class WorldConfig(BaseModel):
     max_pending_trades: int = 3
     death_treasury_return_pct: float = 0.5
     death_local_share_pct: float = 0.5
+    message_max_length: int = 500
+    broadcast_history_limit: int = 20
+    private_message_history_limit: int = 50
     npc_budget_distribution: str = "equal"
     treasury_min_reserve: Millicredits = 100_000
 
@@ -318,6 +325,10 @@ class WorldState:
         next_agent_id: int,
         config: WorldConfig,
         rng: random.Random,
+        pending_messages: list[Message] | None = None,
+        delivered_messages: dict[str, list[Message]] | None = None,
+        broadcast_history: dict[str, list[Message]] | None = None,
+        next_message_seq: int = 0,
         order_book: dict[str, object] | None = None,
         trade_proposals: dict[str, object] | None = None,
         trade_history: dict[str, list[object]] | None = None,
@@ -331,6 +342,10 @@ class WorldState:
         self.next_agent_id = next_agent_id
         self.config = config
         self.rng = rng
+        self.pending_messages: list[Message] = pending_messages if pending_messages is not None else []
+        self.delivered_messages: dict[str, list[Message]] = delivered_messages if delivered_messages is not None else {}
+        self.broadcast_history: dict[str, list[Message]] = broadcast_history if broadcast_history is not None else {}
+        self.next_message_seq = next_message_seq
         # Trading state (typed as object to avoid circular import;
         # actual types are PostedOrder, TradeProposal, TradeResult)
         self.order_book: dict[str, object] = order_book if order_book is not None else {}
@@ -492,6 +507,16 @@ class WorldState:
             "next_agent_id": self.next_agent_id,
             "config": self.config.model_dump(mode="json"),
             "rng_state": self.rng.getstate(),
+            "pending_messages": [m.model_dump(mode="json") for m in self.pending_messages],
+            "delivered_messages": {
+                aid: [m.model_dump(mode="json") for m in msgs]
+                for aid, msgs in self.delivered_messages.items()
+            },
+            "broadcast_history": {
+                nid: [m.model_dump(mode="json") for m in msgs]
+                for nid, msgs in self.broadcast_history.items()
+            },
+            "next_message_seq": self.next_message_seq,
             "order_book": order_book_json,
             "trade_proposals": proposals_json,
             "trade_history": history_json,
@@ -501,6 +526,7 @@ class WorldState:
     @classmethod
     def from_json(cls, data: dict) -> WorldState:
         """Deserialize a world state from a JSON-compatible dict."""
+        from evomarket.engine.communication import Message
         from evomarket.engine.trading import (
             CommodityType as CT,
             PostedOrder,
@@ -513,6 +539,18 @@ class WorldState:
         config = WorldConfig.model_validate(data["config"])
         rng = random.Random()
         rng.setstate(data["rng_state"])
+
+        pending_messages = [
+            Message.model_validate(m) for m in data.get("pending_messages", [])
+        ]
+        delivered_messages = {
+            aid: [Message.model_validate(m) for m in msgs]
+            for aid, msgs in data.get("delivered_messages", {}).items()
+        }
+        broadcast_history = {
+            nid: [Message.model_validate(m) for m in msgs]
+            for nid, msgs in data.get("broadcast_history", {}).items()
+        }
 
         # Deserialize trading state
         order_book: dict[str, object] = {}
@@ -548,6 +586,10 @@ class WorldState:
             next_agent_id=data["next_agent_id"],
             config=config,
             rng=rng,
+            pending_messages=pending_messages,
+            delivered_messages=delivered_messages,
+            broadcast_history=broadcast_history,
+            next_message_seq=data.get("next_message_seq", 0),
             order_book=order_book,
             trade_proposals=trade_proposals,
             trade_history=trade_history,
