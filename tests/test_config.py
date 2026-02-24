@@ -34,7 +34,9 @@ class TestCreditConversion:
     def test_starting_credits_conversion(self) -> None:
         config = SimulationConfig()
         wc = config.to_world_config()
-        assert wc.starting_credits == round(config.starting_credits * MILLICREDITS_PER_CREDIT)
+        assert wc.starting_credits == round(
+            config.starting_credits * MILLICREDITS_PER_CREDIT
+        )
 
     def test_fractional_credits(self) -> None:
         config = SimulationConfig(starting_credits=30.5)
