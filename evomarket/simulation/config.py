@@ -78,7 +78,7 @@ class SimulationConfig:
                 f"population_size ({self.population_size})"
             )
 
-        valid_types = {"harvester", "trader", "social", "hoarder", "explorer", "random"}
+        valid_types = {"harvester", "trader", "social", "hoarder", "explorer", "random", "llm"}
         for agent_type in self.agent_mix:
             if agent_type not in valid_types:
                 raise ValueError(

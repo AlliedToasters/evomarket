@@ -45,6 +45,37 @@ def _create_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override ticks_per_episode",
     )
+    run_parser.add_argument(
+        "--agent-type",
+        type=str,
+        choices=["heuristic", "llm"],
+        default="heuristic",
+        help="Agent type (default: heuristic)",
+    )
+    run_parser.add_argument(
+        "--model",
+        type=str,
+        default="qwen3:8b",
+        help="LLM model name (default: qwen3:8b)",
+    )
+    run_parser.add_argument(
+        "--llm-url",
+        type=str,
+        default="http://localhost:11434/v1",
+        help="LLM API base URL (default: http://localhost:11434/v1)",
+    )
+    run_parser.add_argument(
+        "--llm-api-key",
+        type=str,
+        default="",
+        help="API key for remote LLM providers",
+    )
+    run_parser.add_argument(
+        "--population",
+        type=int,
+        default=None,
+        help="Override population_size",
+    )
 
     # analyze
     analyze_parser = subparsers.add_parser(
@@ -81,27 +112,54 @@ def _cmd_run(args: argparse.Namespace) -> None:
     else:
         config = SimulationConfig()
 
+    config_overrides: dict = {**config.to_json()}
+
     # Apply overrides
     if args.seed is not None:
-        config = SimulationConfig(**{**config.to_json(), "seed": args.seed})
+        config_overrides["seed"] = args.seed
     if args.ticks is not None:
-        config = SimulationConfig(
-            **{**config.to_json(), "ticks_per_episode": args.ticks}
-        )
+        config_overrides["ticks_per_episode"] = args.ticks
+    if args.population is not None:
+        config_overrides["population_size"] = args.population
+
+    is_llm = args.agent_type == "llm"
+
+    # For LLM mode, build an LLM-compatible agent_mix
+    if is_llm:
+        pop = config_overrides.get("population_size", config.population_size)
+        config_overrides["agent_mix"] = {"llm": pop}
 
     fast_mode = args.fast
     if fast_mode:
-        config = SimulationConfig(
-            **{**config.to_json(), "checkpoint_interval": 0, "verbose_logging": False}
-        )
+        config_overrides["checkpoint_interval"] = 0
+        config_overrides["verbose_logging"] = False
+
+    config = SimulationConfig(**config_overrides)
 
     output_dir = Path(args.output_dir) if not fast_mode else None
-    factory = HeuristicAgentFactory(config)
 
-    print(
-        f"Running episode: seed={config.seed}, ticks={config.ticks_per_episode}, "
-        f"agents={config.population_size}"
-    )
+    # Create the appropriate agent factory
+    if is_llm:
+        from evomarket.agents.llm_agent import LLMAgentFactory
+        from evomarket.agents.llm_backend import LLMBackend
+
+        backend = LLMBackend(
+            model=args.model,
+            base_url=args.llm_url,
+            api_key=args.llm_api_key,
+        )
+        factory = LLMAgentFactory(backend, config)
+        print(
+            f"Running LLM episode: model={args.model}, url={args.llm_url}, "
+            f"seed={config.seed}, ticks={config.ticks_per_episode}, "
+            f"agents={config.population_size}"
+        )
+    else:
+        factory = HeuristicAgentFactory(config)
+        print(
+            f"Running episode: seed={config.seed}, ticks={config.ticks_per_episode}, "
+            f"agents={config.population_size}"
+        )
 
     start = time.time()
     result = run_episode(
@@ -109,6 +167,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
         factory,
         output_dir=output_dir,
         enable_logging=not fast_mode,
+        tick_callback=_llm_tick_callback if is_llm else None,
     )
     elapsed = time.time() - start
 
@@ -130,6 +189,11 @@ def _cmd_run(args: argparse.Namespace) -> None:
 
     if output_dir is not None:
         print(f"\nResults saved to {output_dir}/")
+
+
+def _llm_tick_callback(tick_num: int, wall_time: float) -> None:
+    """Print per-tick wall time for LLM mode."""
+    print(f"  tick {tick_num}: {wall_time:.2f}s")
 
 
 def _cmd_analyze(args: argparse.Namespace) -> None:
