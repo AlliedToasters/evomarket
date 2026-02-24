@@ -53,9 +53,7 @@ def _make_heatmap(
     return fig
 
 
-def _make_price_curves(
-    df, node_id: str, start_tick: int, end_tick: int
-) -> go.Figure:
+def _make_price_curves(df, node_id: str, start_tick: int, end_tick: int) -> go.Figure:
     """Build a line chart of price vs tick for all commodities at a node."""
     node_df = df[
         (df["node_id"] == node_id)

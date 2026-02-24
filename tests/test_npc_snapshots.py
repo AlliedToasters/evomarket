@@ -67,7 +67,9 @@ class TestLogNpcSnapshots:
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT * FROM npc_snapshots ORDER BY node_id, commodity").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM npc_snapshots ORDER BY node_id, commodity"
+        ).fetchall()
 
         # Count expected rows: one per (node, commodity) where node buys that commodity
         expected_count = sum(len(n.npc_buys) for n in world.nodes.values())
@@ -191,7 +193,14 @@ class TestLoadNpcSnapshots:
         ]
         df = pd.DataFrame(records)
 
-        assert set(df.columns) == {"tick", "node_id", "commodity", "price", "stockpile", "budget"}
+        assert set(df.columns) == {
+            "tick",
+            "node_id",
+            "commodity",
+            "price",
+            "stockpile",
+            "budget",
+        }
         assert len(df) > 0
         # Prices should be in display credits (not millicredits)
         # Base price is 5000 mc = 5.0 display credits; at zero stockpile price = base
