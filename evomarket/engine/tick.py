@@ -154,26 +154,16 @@ def _compute_metrics(
         if r.success and r.action.action_type in ("accept_order", "accept_trade")
     )
 
-    # Estimate trade volume from action detail strings
-    trade_volume: Millicredits = 0
-    for r in action_results:
-        if r.success and r.action.action_type == "accept_order":
-            # Extract credits from detail: "Accepted order ...: NNNN credits"
-            parts = r.detail.rsplit(":", 1)
-            if len(parts) == 2:
-                try:
-                    trade_volume += int(parts[1].strip().split()[0])
-                except (ValueError, IndexError):
-                    pass
-
-    # Count NPC sales (post_order with side=sell that got filled by NPC)
-    npc_sales = sum(
-        1
+    # Sum trade volume from structured credits_transferred field
+    trade_volume: Millicredits = sum(
+        r.credits_transferred
         for r in action_results
         if r.success
-        and r.action.action_type == "post_order"
-        and getattr(r.action, "side", None) == "sell"
+        and r.action.action_type in ("accept_order", "accept_trade")
     )
+
+    # Count NPC sales (flagged by resolve_actions)
+    npc_sales = sum(1 for r in action_results if r.success and r.npc_sale)
 
     # Count messages sent
     messages = sum(

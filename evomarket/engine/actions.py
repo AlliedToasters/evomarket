@@ -203,6 +203,8 @@ class ActionResult(BaseModel):
     action: Action
     success: bool
     detail: str
+    credits_transferred: Millicredits = 0
+    npc_sale: bool = False
 
 
 # ============================================================================
@@ -556,7 +558,8 @@ def resolve_actions(
         results.append(result)
 
     # NPC auto-fill sell orders using iterative per-unit pricing
-    _resolve_npc_sells(world)
+    npc_results = _resolve_npc_sells(world)
+    results.extend(npc_results)
 
     return results
 
@@ -710,6 +713,7 @@ def _resolve_accept_order(
             action=action,
             success=True,
             detail=f"Accepted order {action.order_id}: {trade_result.credits_transferred} credits",
+            credits_transferred=trade_result.credits_transferred,
         )
     else:
         return ActionResult(
@@ -777,6 +781,7 @@ def _resolve_accept_trade(
             action=action,
             success=True,
             detail=f"Accepted trade {action.trade_id}",
+            credits_transferred=trade_result.credits_transferred,
         )
     else:
         return ActionResult(
@@ -858,11 +863,12 @@ def _resolve_inspect(
     return ActionResult(agent_id=agent_id, action=action, success=True, detail=detail)
 
 
-def _resolve_npc_sells(world: WorldState) -> None:
+def _resolve_npc_sells(world: WorldState) -> list[ActionResult]:
     """Auto-fill open sell orders where NPCs can buy the commodity.
 
     Uses the economy module's iterative per-unit pricing via process_npc_sell.
     Processes orders in order_id sequence.
+    Returns ActionResult records for each NPC sale.
     """
     from evomarket.engine.trading import OrderStatus
 
@@ -888,6 +894,8 @@ def _resolve_npc_sells(world: WorldState) -> None:
             continue
 
         orders_to_fill.append(order_id)
+
+    results: list[ActionResult] = []
 
     for order_id in orders_to_fill:
         order = world.order_book.get(order_id)
@@ -915,3 +923,21 @@ def _resolve_npc_sells(world: WorldState) -> None:
         from evomarket.engine.trading import OrderStatus as OS
 
         order.status = OS.FILLED
+
+        if result.units_sold > 0:
+            results.append(ActionResult(
+                agent_id=agent_id,
+                action=PostOrderAction(
+                    action_type="post_order",
+                    side="sell",
+                    commodity=commodity,
+                    quantity=quantity,
+                    price=result.total_credits_received // max(result.units_sold, 1),
+                ),
+                success=True,
+                detail=f"NPC bought {result.units_sold} {commodity.value} for {result.total_credits_received} credits",
+                credits_transferred=result.total_credits_received,
+                npc_sale=True,
+            ))
+
+    return results
