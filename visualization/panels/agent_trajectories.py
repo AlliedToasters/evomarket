@@ -79,7 +79,9 @@ def render(episode_dir: str) -> None:
             )
             summaries = summaries.merge(wealth_stats, on="agent_id", how="left")
             summaries["max_credits"] = summaries["max_credits"].fillna(0.0)
-            summaries["cumulative_credits"] = summaries["cumulative_credits"].fillna(0.0)
+            summaries["cumulative_credits"] = summaries["cumulative_credits"].fillna(
+                0.0
+            )
         else:
             summaries["max_credits"] = 0.0
             summaries["cumulative_credits"] = 0.0
