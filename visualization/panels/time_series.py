@@ -29,10 +29,7 @@ def _compute_credit_reservoirs(
             "tick",
         ]
         return pd.DataFrame(
-            [
-                {"tick": t, "reservoir": "Agent Credits", "credits": 0.0}
-                for t in ticks
-            ]
+            [{"tick": t, "reservoir": "Agent Credits", "credits": 0.0} for t in ticks]
             + [
                 {"tick": t, "reservoir": "System Credits", "credits": total_supply}
                 for t in ticks
