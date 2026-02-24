@@ -925,19 +925,22 @@ def _resolve_npc_sells(world: WorldState) -> list[ActionResult]:
         order.status = OS.FILLED
 
         if result.units_sold > 0:
-            results.append(ActionResult(
-                agent_id=agent_id,
-                action=PostOrderAction(
-                    action_type="post_order",
-                    side="sell",
-                    commodity=commodity,
-                    quantity=quantity,
-                    price=result.total_credits_received // max(result.units_sold, 1),
-                ),
-                success=True,
-                detail=f"NPC bought {result.units_sold} {commodity.value} for {result.total_credits_received} credits",
-                credits_transferred=result.total_credits_received,
-                npc_sale=True,
-            ))
+            results.append(
+                ActionResult(
+                    agent_id=agent_id,
+                    action=PostOrderAction(
+                        action_type="post_order",
+                        side="sell",
+                        commodity=commodity,
+                        quantity=quantity,
+                        price=result.total_credits_received
+                        // max(result.units_sold, 1),
+                    ),
+                    success=True,
+                    detail=f"NPC bought {result.units_sold} {commodity.value} for {result.total_credits_received} credits",
+                    credits_transferred=result.total_credits_received,
+                    npc_sale=True,
+                )
+            )
 
     return results

@@ -158,8 +158,7 @@ def _compute_metrics(
     trade_volume: Millicredits = sum(
         r.credits_transferred
         for r in action_results
-        if r.success
-        and r.action.action_type in ("accept_order", "accept_trade")
+        if r.success and r.action.action_type in ("accept_order", "accept_trade")
     )
 
     # Count NPC sales (flagged by resolve_actions)
