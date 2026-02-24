@@ -45,9 +45,7 @@ def _compute_layout(
 # ---------------------------------------------------------------------------
 
 
-def _edge_traces(
-    topo: dict, pos: dict[str, tuple[float, float]]
-) -> list[go.Scatter]:
+def _edge_traces(topo: dict, pos: dict[str, tuple[float, float]]) -> list[go.Scatter]:
     """Create line traces for graph edges."""
     edge_x: list[float | None] = []
     edge_y: list[float | None] = []
@@ -114,7 +112,11 @@ def _node_traces(
                 x=xs,
                 y=ys,
                 mode="markers+text",
-                marker={"size": 20, "color": color, "line": {"width": 1, "color": "#333"}},
+                marker={
+                    "size": 20,
+                    "color": color,
+                    "line": {"width": 1, "color": "#333"},
+                },
                 text=labels,
                 textposition="top center",
                 textfont={"size": 9},
@@ -141,11 +143,7 @@ def _agent_traces(
     hover_texts: list[str] = []
 
     # Collect all credits for scaling
-    all_credits = [
-        a["credits"]
-        for agents in tick_agents.values()
-        for a in agents
-    ]
+    all_credits = [a["credits"] for agents in tick_agents.values() for a in agents]
     if not all_credits:
         return []
 
