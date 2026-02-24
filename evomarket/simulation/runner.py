@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -105,6 +107,7 @@ def run_episode(
     *,
     output_dir: Path | None = None,
     enable_logging: bool = True,
+    tick_callback: Callable[[int, float], None] | None = None,
 ) -> EpisodeResult:
     """Execute a complete simulation episode.
 
@@ -113,6 +116,7 @@ def run_episode(
         agent_factory: Factory for creating agent instances.
         output_dir: Directory for checkpoints and logs. None disables file output.
         enable_logging: Whether to enable SQLite event logging.
+        tick_callback: Optional callback(tick_num, wall_seconds) called after each tick.
 
     Returns:
         EpisodeResult with final state, metrics, and agent summaries.
@@ -178,12 +182,17 @@ def run_episode(
         _expire_old_orders(world, tick_num)
 
         # Execute tick
+        tick_start = time.monotonic()
         tick_result = execute_tick(
             world,
             agent_decisions,
             debug=config.verify_invariant_every_phase,
         )
+        tick_wall_time = time.monotonic() - tick_start
         tick_metrics_list.append(tick_result.metrics)
+
+        if tick_callback is not None:
+            tick_callback(tick_num, tick_wall_time)
 
         # Track agent stats from action results
         for ar in tick_result.action_results:
