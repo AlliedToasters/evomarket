@@ -24,21 +24,11 @@ _PREAMBLE_TEMPLATE = """\
 === EVOMARKET AGENT ===
 You are {agent_id}. Survive by earning credits. Tax={tax_info}/tick. Credits=0 → death.
 
-ACTIONS (one per tick):
-  move <node_id>                        — move to adjacent node
-  harvest                               — gather resource (RESOURCE nodes only)
-  post_order sell|buy <commodity> <qty> <price> — post order
-  accept_order <order_id>               — fill an existing order
-  propose_trade <agent_id> offer:<items> request:<items> — P2P trade
-  accept_trade <trade_id>               — accept incoming trade
-  send_message <target|broadcast> <text> — send message
-  inspect <agent_id>                    — inspect nearby agent
-  update_will <agent_id>=<pct> ...      — set inheritance
-  idle                                  — do nothing
+VALID ACTIONS THIS TICK (pick one):
+{valid_actions}
 
-Commodities: IRON, WOOD, STONE, HERBS. Prices in credits.
+Commodities: IRON, WOOD, STONE, HERBS. Prices in credits (e.g. 5.0).
 NPC buys at nodes: price = base*(1-stockpile/capacity). High stock=low price.
-Scratchpad tokens: {scratchpad_tokens}
 
 RESPOND EXACTLY:
 ACTION: <action_string>
@@ -46,12 +36,93 @@ SCRATCHPAD: <notes to remember next tick> (optional)
 REASONING: <brief explanation> (optional)"""
 
 
-def _render_preamble(agent_id: str, scratchpad: str) -> str:
-    """Render the immutable preamble with live scratchpad token count."""
+def _get_valid_actions(obs: AgentObservation) -> list[str]:
+    """Build list of valid actions based on current observation context."""
+    actions: list[str] = []
+    node = obs.node_info
+    state = obs.agent_state
+    inv = {c: q for c, q in state.inventory.items() if q > 0}
+
+    # Move — always valid if there are adjacent nodes
+    if node.adjacent_nodes:
+        nodes = ", ".join(node.adjacent_nodes)
+        actions.append(f"  move <node_id>  — move to adjacent node ({nodes})")
+
+    # Harvest — only at RESOURCE nodes with available resources
+    if node.node_type == "RESOURCE":
+        avail = {c: q for c, q in node.resource_availability.items() if q > 0}
+        if avail:
+            res = ", ".join(f"{c.value}={q}" for c, q in avail.items())
+            actions.append(f"  harvest  — gather resource (available: {res})")
+        else:
+            actions.append(
+                "  harvest  — gather resource (none available now, will respawn)"
+            )
+    # No harvest line at all for non-RESOURCE nodes
+
+    # Sell — only if agent has inventory and NPC buys here
+    if inv and node.npc_prices:
+        sellable = [(c, q) for c, q in inv.items() if c in node.npc_prices]
+        if sellable:
+            for c, q in sellable:
+                price = node.npc_prices[c] / MILLICREDITS_PER_CREDIT
+                actions.append(
+                    f"  sell {c.value} <qty> <price>  — sell to NPC (you have {q}, NPC pays ~{price:.1f}cr)"
+                )
+
+    # Buy — if NPC has stock and agent has credits
+    if node.npc_prices and state.credits > 0:
+        actions.append("  buy <commodity> <qty> <price>  — buy from NPC")
+
+    # Post order (generic) — always available
+    actions.append(
+        "  post_order sell|buy <commodity> <qty> <price>  — post limit order"
+    )
+
+    # Accept order — only if there are orders to accept
+    if obs.posted_orders:
+        for o in obs.posted_orders:
+            actions.append(
+                f"  accept_order {o.order_id}  — fill {o.side} {o.commodity.value} x{o.quantity} @{_mc(o.price_per_unit)}cr by {o.poster_id}"
+            )
+
+    # Propose trade — only if other agents are present
+    if obs.agents_present:
+        agents = ", ".join(a.agent_id for a in obs.agents_present)
+        actions.append(
+            f"  propose_trade <agent_id> offer:<items> request:<items>  — trade with nearby agent ({agents})"
+        )
+
+    # Accept trade — only if there are pending proposals
+    if obs.pending_proposals:
+        for p in obs.pending_proposals:
+            actions.append(
+                f"  accept_trade {p.trade_id}  — accept trade from {p.proposer_id}"
+            )
+
+    # Communication — always available
+    actions.append("  send_message <target|broadcast> <text>  — send message")
+
+    # Inspect — only if other agents are present
+    if obs.agents_present:
+        actions.append("  inspect <agent_id>  — inspect nearby agent")
+
+    # Will — always available
+    actions.append("  update_will <agent_id>=<pct> ...  — set inheritance")
+
+    # Idle — always available
+    actions.append("  idle  — do nothing")
+
+    return actions
+
+
+def _render_preamble(agent_id: str, scratchpad: str, obs: AgentObservation) -> str:
+    """Render the preamble with contextually valid actions."""
+    valid_actions = "\n".join(_get_valid_actions(obs))
     return _PREAMBLE_TEMPLATE.format(
         agent_id=agent_id,
         tax_info="0.5cr",
-        scratchpad_tokens=_approx_tokens(scratchpad),
+        valid_actions=valid_actions,
     )
 
 
@@ -170,7 +241,7 @@ def render_prompt(
     Returns a string with three sections: preamble, scratchpad, world state.
     """
     parts = [
-        _render_preamble(agent_id, scratchpad),
+        _render_preamble(agent_id, scratchpad, observation),
         _render_scratchpad(scratchpad),
         _render_world_state(observation),
     ]

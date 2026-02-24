@@ -97,7 +97,36 @@ class TestPreamble:
         assert "agent_042" in prompt
 
     def test_includes_action_reference(self):
-        obs = _make_observation()
+        """With a rich observation, all action types should appear."""
+        obs = _make_observation(
+            node_type="RESOURCE",
+            resource_availability={CommodityType.IRON: 5},
+            npc_prices={CommodityType.IRON: 5000},
+            inventory={CommodityType.IRON: 2},
+            agents_present=[
+                AgentPublicView(agent_id="agent_005", display_name="Agent 5", age=10),
+            ],
+            posted_orders=[
+                OrderView(
+                    order_id="ord_001",
+                    poster_id="agent_005",
+                    side="sell",
+                    commodity=CommodityType.IRON,
+                    quantity=1,
+                    price_per_unit=4500,
+                ),
+            ],
+            pending_proposals=[
+                TradeProposalView(
+                    trade_id="trade_001",
+                    proposer_id="agent_005",
+                    offer_commodities={CommodityType.IRON: 1},
+                    offer_credits=0,
+                    request_commodities={},
+                    request_credits=1000,
+                ),
+            ],
+        )
         prompt = render_prompt(obs, "", "agent_001")
         for action in [
             "move",
@@ -110,7 +139,7 @@ class TestPreamble:
             "send_message",
             "inspect",
         ]:
-            assert action in prompt
+            assert action in prompt, f"Expected '{action}' in prompt"
 
     def test_includes_response_format(self):
         obs = _make_observation()
@@ -119,21 +148,17 @@ class TestPreamble:
         assert "SCRATCHPAD:" in prompt
         assert "REASONING:" in prompt
 
-    def test_scratchpad_token_count_zero(self):
-        preamble = _render_preamble("agent_001", "")
-        assert "Scratchpad tokens: 0" in preamble
-
-    def test_scratchpad_token_count_nonzero(self):
-        scratchpad = "buy iron at node_mine when price drops"
-        preamble = _render_preamble("agent_001", scratchpad)
-        expected_tokens = _approx_tokens(scratchpad)
-        assert f"Scratchpad tokens: {expected_tokens}" in preamble
+    def test_preamble_contains_valid_actions_header(self):
+        obs = _make_observation()
+        preamble = _render_preamble("agent_001", "", obs)
+        assert "VALID ACTIONS THIS TICK" in preamble
 
     def test_preamble_token_efficiency(self):
-        """Preamble should be under 400 tokens with no scratchpad."""
-        preamble = _render_preamble("agent_001", "")
+        """Preamble should be under 600 tokens (dynamic actions may be longer)."""
+        obs = _make_observation()
+        preamble = _render_preamble("agent_001", "", obs)
         tokens = _approx_tokens(preamble)
-        assert tokens < 400, f"Preamble is {tokens} tokens, should be under 400"
+        assert tokens < 600, f"Preamble is {tokens} tokens, should be under 600"
 
 
 class TestScratchpadSection:
