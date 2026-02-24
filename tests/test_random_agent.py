@@ -6,11 +6,9 @@ from evomarket.engine.observation import (
     AgentObservation,
     AgentPublicView,
     AgentStateView,
-    MessageView,
     NodeView,
     OrderView,
     PreambleData,
-    TradeProposalView,
 )
 from evomarket.simulation.config import SimulationConfig
 

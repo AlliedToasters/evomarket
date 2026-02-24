@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 
 from evomarket.agents.heuristic_agent import HeuristicAgentFactory
 from evomarket.agents.random_agent import RandomAgentFactory
@@ -105,7 +104,7 @@ class TestCheckpointing:
     def test_checkpoint_created(self, tmp_path: Path) -> None:
         config = _small_config(checkpoint_interval=5, ticks_per_episode=10)
         factory = HeuristicAgentFactory(config)
-        result = run_episode(config, factory, output_dir=tmp_path, enable_logging=False)
+        run_episode(config, factory, output_dir=tmp_path, enable_logging=False)
 
         checkpoint_dir = tmp_path / "checkpoints"
         checkpoints = list(checkpoint_dir.glob("checkpoint_tick_*.json"))
