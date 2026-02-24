@@ -67,7 +67,7 @@ def _extract_sections(text: str) -> dict[str, str]:
                 if current_key is not None:
                     sections[current_key] = "\n".join(current_lines).strip()
                 current_key = prefix.rstrip(":")
-                current_lines = [stripped[len(prefix):].strip()]
+                current_lines = [stripped[len(prefix) :].strip()]
                 matched = True
                 break
         if not matched and current_key is not None:

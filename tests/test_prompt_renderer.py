@@ -1,6 +1,10 @@
 """Tests for the prompt renderer."""
 
-from evomarket.agents.prompt_renderer import render_prompt, _approx_tokens, _render_preamble
+from evomarket.agents.prompt_renderer import (
+    render_prompt,
+    _approx_tokens,
+    _render_preamble,
+)
 from evomarket.core.types import CommodityType
 from evomarket.engine.observation import (
     AgentObservation,
@@ -95,8 +99,17 @@ class TestPreamble:
     def test_includes_action_reference(self):
         obs = _make_observation()
         prompt = render_prompt(obs, "", "agent_001")
-        for action in ["move", "harvest", "post_order", "accept_order", "idle",
-                        "propose_trade", "accept_trade", "send_message", "inspect"]:
+        for action in [
+            "move",
+            "harvest",
+            "post_order",
+            "accept_order",
+            "idle",
+            "propose_trade",
+            "accept_trade",
+            "send_message",
+            "inspect",
+        ]:
             assert action in prompt
 
     def test_includes_response_format(self):

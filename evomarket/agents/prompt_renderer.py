@@ -83,7 +83,9 @@ def _render_world_state(obs: AgentObservation) -> str:
     s = obs.agent_state
     inv_parts = [f"{c.value}={q}" for c, q in s.inventory.items() if q > 0]
     inv_str = ", ".join(inv_parts) if inv_parts else "empty"
-    lines.append(f"You: credits={_mc(s.credits)} inv=[{inv_str}] age={s.age} at={s.location}")
+    lines.append(
+        f"You: credits={_mc(s.credits)} inv=[{inv_str}] age={s.age} at={s.location}"
+    )
     if s.grace_ticks_remaining > 0:
         lines.append(f"  Grace: {s.grace_ticks_remaining} ticks (no tax)")
 
@@ -126,16 +128,20 @@ def _render_world_state(obs: AgentObservation) -> str:
     if obs.pending_proposals:
         lines.append("Trade proposals:")
         for p in obs.pending_proposals:
-            offer = ", ".join(
-                f"{c.value}={q}" for c, q in p.offer_commodities.items()
-            )
+            offer = ", ".join(f"{c.value}={q}" for c, q in p.offer_commodities.items())
             if p.offer_credits > 0:
-                offer += f", credits={_mc(p.offer_credits)}" if offer else f"credits={_mc(p.offer_credits)}"
-            req = ", ".join(
-                f"{c.value}={q}" for c, q in p.request_commodities.items()
-            )
+                offer += (
+                    f", credits={_mc(p.offer_credits)}"
+                    if offer
+                    else f"credits={_mc(p.offer_credits)}"
+                )
+            req = ", ".join(f"{c.value}={q}" for c, q in p.request_commodities.items())
             if p.request_credits > 0:
-                req += f", credits={_mc(p.request_credits)}" if req else f"credits={_mc(p.request_credits)}"
+                req += (
+                    f", credits={_mc(p.request_credits)}"
+                    if req
+                    else f"credits={_mc(p.request_credits)}"
+                )
             lines.append(
                 f"  {p.trade_id} from {p.proposer_id}: offers=[{offer}] wants=[{req}]"
             )
