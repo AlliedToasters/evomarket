@@ -69,6 +69,16 @@ CREATE INDEX IF NOT EXISTS idx_deaths_tick ON deaths(tick);
 CREATE INDEX IF NOT EXISTS idx_messages_tick ON messages(tick);
 CREATE INDEX IF NOT EXISTS idx_snapshots_tick ON agent_snapshots(tick);
 CREATE INDEX IF NOT EXISTS idx_snapshots_agent ON agent_snapshots(agent_id);
+
+CREATE TABLE IF NOT EXISTS npc_snapshots (
+    tick INTEGER NOT NULL,
+    node_id TEXT NOT NULL,
+    commodity TEXT NOT NULL,
+    price INTEGER NOT NULL,
+    stockpile INTEGER NOT NULL,
+    budget INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_npc_snapshots_tick ON npc_snapshots(tick);
 """
 
 
@@ -276,6 +286,28 @@ class EventLogger:
                 )
             )
 
+    def log_npc_snapshots(self, tick: int, world: WorldState) -> None:
+        """Buffer per-node NPC state snapshots for all nodes with NPC buys."""
+        if not self._enabled:
+            return
+        for node in world.nodes.values():
+            for commodity in node.npc_buys:
+                price = world.get_npc_price(node.node_id, commodity)
+                stockpile = node.npc_stockpile.get(commodity, 0)
+                self._buffer.append(
+                    _BufferedEvent(
+                        table="npc_snapshots",
+                        values=(
+                            tick,
+                            node.node_id,
+                            commodity.value,
+                            price,
+                            stockpile,
+                            node.npc_budget,
+                        ),
+                    )
+                )
+
     def flush_tick(self) -> None:
         """Commit all buffered events in a single transaction."""
         if not self._enabled or not self._buffer or self._conn is None:
@@ -289,6 +321,7 @@ class EventLogger:
             "deaths": "INSERT INTO deaths (tick, agent_id, estate_json, will_json) VALUES (?, ?, ?, ?)",
             "messages": "INSERT INTO messages (tick, sender_id, recipient, node_id, text) VALUES (?, ?, ?, ?, ?)",
             "agent_snapshots": "INSERT INTO agent_snapshots (tick, agent_id, credits, inventory_json, location, age) VALUES (?, ?, ?, ?, ?, ?)",
+            "npc_snapshots": "INSERT INTO npc_snapshots (tick, node_id, commodity, price, stockpile, budget) VALUES (?, ?, ?, ?, ?, ?)",
         }
 
         cursor = self._conn.cursor()

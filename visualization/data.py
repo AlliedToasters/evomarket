@@ -174,6 +174,38 @@ def load_messages(db_path: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
+def has_npc_snapshots(db_path: str) -> bool:
+    """Check whether the npc_snapshots table exists in the database."""
+    conn = get_connection(db_path)
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='npc_snapshots'"
+    )
+    return cursor.fetchone() is not None
+
+
+@st.cache_data
+def load_npc_snapshots(db_path: str) -> pd.DataFrame:
+    """Load per-node-per-tick NPC state with prices/budgets converted to display credits."""
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT tick, node_id, commodity, price, stockpile, budget "
+        "FROM npc_snapshots ORDER BY tick, node_id, commodity"
+    ).fetchall()
+
+    records = [
+        {
+            "tick": row["tick"],
+            "node_id": row["node_id"],
+            "commodity": row["commodity"],
+            "price": row["price"] / _MILLICREDITS_PER_CREDIT,
+            "stockpile": row["stockpile"],
+            "budget": row["budget"] / _MILLICREDITS_PER_CREDIT,
+        }
+        for row in rows
+    ]
+    return pd.DataFrame(records)
+
+
 @st.cache_data
 def load_agent_summaries(episode_dir: str) -> pd.DataFrame:
     """Load per-agent summary stats from result.json as a DataFrame.
