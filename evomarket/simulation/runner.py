@@ -485,9 +485,7 @@ def _run_async_decisions(
             for agent_id, obs in observations.items():
                 record = registry.get(agent_id)
                 if record is None:
-                    tasks[agent_id] = asyncio.ensure_future(
-                        _idle_coro(agent_id)
-                    )
+                    tasks[agent_id] = asyncio.ensure_future(_idle_coro(agent_id))
                 elif isinstance(record.agent, LLMAgent):
                     tasks[agent_id] = asyncio.ensure_future(
                         record.agent.decide_async(obs, sess)

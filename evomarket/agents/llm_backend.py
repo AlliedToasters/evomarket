@@ -60,9 +60,7 @@ class LLMBackend:
             logger.warning("LLMBackend.generate: unexpected response format: %s", exc)
             return ""
 
-    async def generate_async(
-        self, prompt: str, session: aiohttp.ClientSession
-    ) -> str:
+    async def generate_async(self, prompt: str, session: aiohttp.ClientSession) -> str:
         """Async version of generate() using a shared aiohttp session.
 
         Returns empty string on any network or API error.
@@ -81,7 +79,10 @@ class LLMBackend:
 
         try:
             async with session.post(
-                url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=120)
+                url,
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=120),
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -90,5 +91,7 @@ class LLMBackend:
             logger.warning("LLMBackend.generate_async failed: %s", exc)
             return ""
         except (KeyError, IndexError, TypeError) as exc:
-            logger.warning("LLMBackend.generate_async: unexpected response format: %s", exc)
+            logger.warning(
+                "LLMBackend.generate_async: unexpected response format: %s", exc
+            )
             return ""
