@@ -82,6 +82,29 @@ The system SHALL provide a function that returns a mapping from `agent_id` to `a
 - **WHEN** `load_agent_types(episode_dir)` is called
 - **THEN** it SHALL return a dict mapping each agent_id to its agent_type string (e.g., "harvester", "trader")
 
+### Requirement: NPC snapshots query
+The system SHALL provide a function that returns a DataFrame of per-node-per-tick NPC state from the `npc_snapshots` table, with prices and budgets converted from millicredits to display credits.
+
+#### Scenario: Load all NPC snapshots
+- **WHEN** `load_npc_snapshots(db_path)` is called on a database containing the `npc_snapshots` table
+- **THEN** it SHALL return a DataFrame with columns: `tick`, `node_id`, `commodity`, `price`, `stockpile`, `budget`
+- **AND** `price` and `budget` SHALL be in display credits (divided by 1000)
+
+#### Scenario: Result is cached
+- **WHEN** `load_npc_snapshots(db_path)` is called multiple times with the same path
+- **THEN** it SHALL return cached results via `@st.cache_data`
+
+### Requirement: NPC snapshots table existence check
+The system SHALL provide a function that checks whether the `npc_snapshots` table exists in the episode database.
+
+#### Scenario: Table exists
+- **WHEN** `has_npc_snapshots(db_path)` is called on a database containing the `npc_snapshots` table
+- **THEN** it SHALL return `True`
+
+#### Scenario: Table missing
+- **WHEN** `has_npc_snapshots(db_path)` is called on a database without the `npc_snapshots` table
+- **THEN** it SHALL return `False`
+
 ### Requirement: All query functions use st.cache_data
 Every DataFrame-returning query function SHALL be decorated with `@st.cache_data` to avoid re-executing SQL queries on Streamlit reruns.
 
