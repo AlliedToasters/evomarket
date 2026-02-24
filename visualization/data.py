@@ -175,6 +175,53 @@ def load_messages(db_path: str) -> pd.DataFrame:
 
 
 @st.cache_data
+def load_agent_summaries(episode_dir: str) -> pd.DataFrame:
+    """Load per-agent summary stats from result.json as a DataFrame.
+
+    Returns columns: agent_id, agent_type, net_worth, lifetime,
+    total_trades, final_credits, cause_of_death.
+    Credits are converted from millicredits to display credits.
+    """
+    path = Path(episode_dir) / "result.json"
+    columns = [
+        "agent_id",
+        "agent_type",
+        "net_worth",
+        "lifetime",
+        "total_trades",
+        "final_credits",
+        "cause_of_death",
+    ]
+    if not path.exists():
+        return pd.DataFrame(columns=columns)
+
+    result = json.loads(path.read_text())
+    records = []
+    for agent in result.get("agent_summaries", []):
+        raw_type = agent.get("agent_type", "")
+        short_type = (
+            raw_type.removesuffix("Agent").lower()
+            if raw_type.endswith("Agent")
+            else raw_type.lower()
+        )
+        records.append(
+            {
+                "agent_id": agent["agent_id"],
+                "agent_type": short_type,
+                "net_worth": agent.get("final_net_worth", 0) / _MILLICREDITS_PER_CREDIT,
+                "lifetime": agent.get("lifetime", 0),
+                "total_trades": agent.get("total_trades", 0),
+                "final_credits": agent.get("final_credits", 0)
+                / _MILLICREDITS_PER_CREDIT,
+                "cause_of_death": agent.get("cause_of_death"),
+            }
+        )
+    if not records:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(records)
+
+
+@st.cache_data
 def load_config(episode_dir: str) -> dict:
     """Load config.json from the episode directory."""
     path = Path(episode_dir) / "config.json"
