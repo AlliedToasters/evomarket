@@ -6,9 +6,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from visualization import app, common, data
-
-_MILLICREDITS_PER_CREDIT = 1000
+from visualization import common, data
+from visualization.registry import register_panel
 
 
 def _compute_credit_reservoirs(
@@ -19,7 +18,7 @@ def _compute_credit_reservoirs(
     Returns a long-form DataFrame with columns: tick, reservoir, credits.
     """
     config = data.load_config(episode_dir)
-    total_supply = config["total_credit_supply"] / _MILLICREDITS_PER_CREDIT
+    total_supply = config["total_credit_supply"]
 
     snapshots = data.load_agent_snapshots(db_path)
     if snapshots.empty:
@@ -149,4 +148,4 @@ def render(episode_dir: str) -> None:
     st.altair_chart(chart, use_container_width=True)
 
 
-app.register_panel("Time Series", render)
+register_panel("Time Series", render)
