@@ -1,11 +1,9 @@
 """Tests for NPC snapshot logging, data layer, and panel."""
 
-import json
 import sqlite3
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from evomarket.core.world import WorldConfig, generate_world
 from evomarket.simulation.logging import EventLogger
