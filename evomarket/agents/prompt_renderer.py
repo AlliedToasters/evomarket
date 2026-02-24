@@ -79,12 +79,22 @@ def _get_valid_actions(obs: AgentObservation) -> list[str]:
         "  post_order sell|buy <commodity> <qty> <price>  — post limit order"
     )
 
-    # Accept order — only if there are orders to accept
-    if obs.posted_orders:
-        for o in obs.posted_orders:
-            actions.append(
-                f"  accept_order {o.order_id}  — fill {o.side} {o.commodity.value} x{o.quantity} @{_mc(o.price_per_unit)}cr by {o.poster_id}"
-            )
+    # Accept order — only show orders the agent can actually fill
+    for o in obs.posted_orders:
+        if o.side == "sell":
+            # To accept a sell order, agent needs enough credits
+            cost = o.price_per_unit * o.quantity
+            if state.credits >= cost:
+                actions.append(
+                    f"  accept_order {o.order_id}  — buy {o.commodity.value} x{o.quantity} @{_mc(o.price_per_unit)}cr from {o.poster_id}"
+                )
+        elif o.side == "buy":
+            # To accept a buy order, agent needs enough of the commodity
+            agent_qty = inv.get(o.commodity, 0)
+            if agent_qty >= o.quantity:
+                actions.append(
+                    f"  accept_order {o.order_id}  — sell {o.commodity.value} x{o.quantity} @{_mc(o.price_per_unit)}cr to {o.poster_id}"
+                )
 
     # Propose trade — only if other agents are present
     if obs.agents_present:
