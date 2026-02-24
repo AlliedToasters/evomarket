@@ -123,6 +123,10 @@ def _dispatch_action(action_type: str, args: list[str]) -> Action | None:
     elif action_type in ("post_order", "postorder", "post"):
         return _parse_post_order(args)
 
+    elif action_type in ("sell", "buy"):
+        # Shorthand: "sell IRON 1 5.0" → post_order sell IRON 1 5.0
+        return _parse_post_order([action_type] + args)
+
     elif action_type in ("accept_order", "acceptorder"):
         if not args:
             return None
@@ -151,7 +155,11 @@ def _dispatch_action(action_type: str, args: list[str]) -> Action | None:
 
 
 def _parse_post_order(args: list[str]) -> Action | None:
-    """Parse: sell|buy <commodity> <qty> <price>"""
+    """Parse: sell|buy <commodity> <qty> <price>
+
+    Price can be an integer (millicredits) or a float (display credits).
+    Floats are auto-converted to millicredits (×1000).
+    """
     if len(args) < 4:
         return None
     side = args[0].lower()
@@ -161,8 +169,18 @@ def _parse_post_order(args: list[str]) -> Action | None:
     if commodity is None:
         return None
     qty = _parse_int(args[2])
-    price = _parse_int(args[3])
-    if qty is None or qty <= 0 or price is None or price <= 0:
+    if qty is None or qty <= 0:
+        return None
+    # Accept float prices (display credits) and convert to millicredits
+    try:
+        price_raw = float(args[3])
+    except (ValueError, TypeError):
+        return None
+    if price_raw <= 0:
+        return None
+    # If the value looks like display credits (has decimal or is small), convert
+    price = int(price_raw * 1000) if price_raw < 1000 else int(price_raw)
+    if price <= 0:
         return None
     return PostOrderAction(side=side, commodity=commodity, quantity=qty, price=price)
 
