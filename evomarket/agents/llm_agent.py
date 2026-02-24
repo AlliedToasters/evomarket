@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import aiohttp
+
 from evomarket.agents.action_parser import parse_response
 from evomarket.agents.base import AgentFactory, BaseAgent
 from evomarket.agents.llm_backend import LLMBackend
@@ -51,6 +53,30 @@ class LLMAgent(BaseAgent):
         except Exception:
             logger.warning(
                 "LLMAgent %s decide() failed, using idle", self._agent_id, exc_info=True
+            )
+            return AgentTurnResult(action=IdleAction())
+
+    async def decide_async(
+        self, observation: AgentObservation, session: aiohttp.ClientSession
+    ) -> AgentTurnResult:
+        """Async version of decide() for parallel LLM inference."""
+        try:
+            prompt = render_prompt(observation, self._scratchpad, self._agent_id)
+            raw_response = await self._backend.generate_async(prompt, session)
+            action, scratchpad_update = parse_response(raw_response)
+
+            if scratchpad_update is not None:
+                self._scratchpad = scratchpad_update
+
+            return AgentTurnResult(
+                action=action,
+                scratchpad_update=scratchpad_update,
+            )
+        except Exception:
+            logger.warning(
+                "LLMAgent %s decide_async() failed, using idle",
+                self._agent_id,
+                exc_info=True,
             )
             return AgentTurnResult(action=IdleAction())
 

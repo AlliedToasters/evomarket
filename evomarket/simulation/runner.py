@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -9,6 +10,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import aiohttp
 
 from evomarket.agents.base import AgentFactory, BaseAgent
 from evomarket.core.types import Millicredits, to_display_credits
@@ -151,22 +154,17 @@ def run_episode(
             spawn_tick=0,
         )
 
-    # Build the decision function
+    # Build the decision function — async parallel for LLM agents, sync otherwise
+    has_llm_agents = _has_llm_agents(registry)
+    aio_session: aiohttp.ClientSession | None = None
+
     def agent_decisions(
         observations: dict[str, AgentObservation],
     ) -> dict[str, AgentTurnResult]:
-        results: dict[str, AgentTurnResult] = {}
-        for agent_id, obs in observations.items():
-            record = registry.get(agent_id)
-            if record is None:
-                results[agent_id] = AgentTurnResult(action=IdleAction())
-                continue
-            try:
-                results[agent_id] = record.agent.decide(obs)
-            except Exception:
-                logger.warning("Agent %s decide() failed, using idle", agent_id)
-                results[agent_id] = AgentTurnResult(action=IdleAction())
-        return results
+        nonlocal aio_session
+        if has_llm_agents:
+            return _run_async_decisions(observations, registry, aio_session)
+        return _run_sync_decisions(observations, registry)
 
     # Main tick loop
     tick_metrics_list: list[TickMetrics] = []
@@ -360,21 +358,14 @@ def resume_from_checkpoint(
     db_path = output_dir / "episode_resumed.sqlite" if output_dir is not None else None
     event_logger = EventLogger(db_path, enabled=enable_logging and db_path is not None)
 
+    has_llm_agents = _has_llm_agents(registry)
+
     def agent_decisions(
         observations: dict[str, AgentObservation],
     ) -> dict[str, AgentTurnResult]:
-        results: dict[str, AgentTurnResult] = {}
-        for agent_id, obs in observations.items():
-            record = registry.get(agent_id)
-            if record is None:
-                results[agent_id] = AgentTurnResult(action=IdleAction())
-                continue
-            try:
-                results[agent_id] = record.agent.decide(obs)
-            except Exception:
-                logger.warning("Agent %s decide() failed, using idle", agent_id)
-                results[agent_id] = AgentTurnResult(action=IdleAction())
-        return results
+        if has_llm_agents:
+            return _run_async_decisions(observations, registry, None)
+        return _run_sync_decisions(observations, registry)
 
     tick_metrics_list: list[TickMetrics] = []
 
@@ -447,6 +438,93 @@ def resume_from_checkpoint(
         agent_summaries=agent_summaries,
         episode_metrics=episode_metrics,
     )
+
+
+# ---------------------------------------------------------------------------
+# Async / sync decision helpers
+# ---------------------------------------------------------------------------
+
+
+def _has_llm_agents(registry: dict[str, _AgentRecord]) -> bool:
+    """Return True if any registered agent is an LLMAgent."""
+    from evomarket.agents.llm_agent import LLMAgent
+
+    return any(isinstance(rec.agent, LLMAgent) for rec in registry.values())
+
+
+def _run_sync_decisions(
+    observations: dict[str, AgentObservation],
+    registry: dict[str, _AgentRecord],
+) -> dict[str, AgentTurnResult]:
+    """Serial decision loop for heuristic agents."""
+    results: dict[str, AgentTurnResult] = {}
+    for agent_id, obs in observations.items():
+        record = registry.get(agent_id)
+        if record is None:
+            results[agent_id] = AgentTurnResult(action=IdleAction())
+            continue
+        try:
+            results[agent_id] = record.agent.decide(obs)
+        except Exception:
+            logger.warning("Agent %s decide() failed, using idle", agent_id)
+            results[agent_id] = AgentTurnResult(action=IdleAction())
+    return results
+
+
+def _run_async_decisions(
+    observations: dict[str, AgentObservation],
+    registry: dict[str, _AgentRecord],
+    session: aiohttp.ClientSession | None,
+) -> dict[str, AgentTurnResult]:
+    """Parallel decision calls for LLM agents via asyncio.gather."""
+    from evomarket.agents.llm_agent import LLMAgent
+
+    async def _gather() -> dict[str, AgentTurnResult]:
+        async with aiohttp.ClientSession() as sess:
+            tasks: dict[str, asyncio.Task[AgentTurnResult]] = {}
+            for agent_id, obs in observations.items():
+                record = registry.get(agent_id)
+                if record is None:
+                    tasks[agent_id] = asyncio.ensure_future(
+                        _idle_coro(agent_id)
+                    )
+                elif isinstance(record.agent, LLMAgent):
+                    tasks[agent_id] = asyncio.ensure_future(
+                        record.agent.decide_async(obs, sess)
+                    )
+                else:
+                    # Non-LLM agents run synchronously, wrapped in a coro
+                    tasks[agent_id] = asyncio.ensure_future(
+                        _sync_decide_coro(record, obs)
+                    )
+            await asyncio.gather(*tasks.values(), return_exceptions=True)
+            results: dict[str, AgentTurnResult] = {}
+            for agent_id, task in tasks.items():
+                exc = task.exception() if task.done() and not task.cancelled() else None
+                if exc is not None:
+                    logger.warning("Agent %s async decide failed: %s", agent_id, exc)
+                    results[agent_id] = AgentTurnResult(action=IdleAction())
+                else:
+                    results[agent_id] = task.result()
+            return results
+
+    return asyncio.run(_gather())
+
+
+async def _idle_coro(agent_id: str) -> AgentTurnResult:
+    """Coroutine returning an idle action (for missing agents)."""
+    return AgentTurnResult(action=IdleAction())
+
+
+async def _sync_decide_coro(
+    record: _AgentRecord, obs: AgentObservation
+) -> AgentTurnResult:
+    """Wrap a synchronous decide() call in a coroutine."""
+    try:
+        return record.agent.decide(obs)
+    except Exception:
+        logger.warning("Agent %s decide() failed, using idle", record.agent_id)
+        return AgentTurnResult(action=IdleAction())
 
 
 # ---------------------------------------------------------------------------
