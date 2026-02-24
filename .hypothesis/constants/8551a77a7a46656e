@@ -1,0 +1,4 @@
+# file: /home/alliedtoasters/projects/evomarket/evomarket/core/world.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.1, 0.5, 0.8, 1.0, 500, 1000, 5000, 30000, 100000, 10000000, 'Spawn', '_', 'after', 'agents', 'config', 'equal', 'json', 'next_agent_id', 'node_spawn', 'nodes', 'rng_state', 'tick', 'total_supply', 'treasury']

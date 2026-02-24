@@ -1,0 +1,4 @@
+# file: /home/alliedtoasters/projects/evomarket/evomarket/core/world.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.1, 0.5, 0.8, 1.0, 500, 1000, 5000, 30000, 100000, 10000000, 'Spawn', '_', 'after', 'agents', 'broadcast_history', 'buyer_id', 'config', 'credits_transferred', 'delivered_messages', 'equal', 'failure_reason', 'items_transferred', 'json', 'next_agent_id', 'next_message_seq', 'next_order_seq', 'node_id', 'node_spawn', 'nodes', 'order_book', 'pending_messages', 'poster_id', 'proposer_id', 'rng_state', 'seller_id', 'status', 'success', 'tick', 'total_supply', 'trade_history', 'trade_proposals', 'trade_type', 'treasury']

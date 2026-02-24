@@ -1,0 +1,4 @@
+# file: /home/alliedtoasters/projects/evomarket/evomarket/engine/trading.py
+# hypothesis_version: 6.151.9
+
+['ACCEPTED', 'ACTIVE', 'BUY', 'CANCELLED', 'EXPIRED', 'FILLED', 'INVALID', 'PENDING', 'REJECTED', 'SELL', 'SUSPENDED', 'after', 'order', 'order not found', 'p2p', 'poster cannot cover', 'proposal not found']

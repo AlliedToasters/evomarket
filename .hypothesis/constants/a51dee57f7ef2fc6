@@ -1,0 +1,4 @@
+# file: /home/alliedtoasters/projects/evomarket/evomarket/engine/actions.py
+# hypothesis_version: 6.151.9
+
+[1e-09, 1.0, ', ', 'Idle', 'accept_order', 'accept_trade', 'action_type', 'all', 'broadcast', 'buy', 'commodity', 'credits', 'distribution', 'empty', 'harvest', 'idle', 'inspect', 'move', 'node_id', 'offer', 'post_order', 'poster_id', 'price', 'price_per_unit', 'propose_trade', 'quantity', 'request', 'request_commodities', 'request_credits', 'sell', 'send_message', 'side', 'status', 'target_id', 'update_will']
