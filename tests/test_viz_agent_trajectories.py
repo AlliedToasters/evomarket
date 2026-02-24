@@ -13,6 +13,7 @@ import pytest
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def episode_dir(tmp_path: Path) -> Path:
     """Create a minimal episode directory with SQLite DB and result.json."""
@@ -35,9 +36,7 @@ def episode_dir(tmp_path: Path) -> Path:
         (2, "agent_001", 40000, '{"IRON":2}', "node_0", 2),
         (2, "agent_002", 20000, '{"IRON":0}', "node_1", 2),
     ]
-    conn.executemany(
-        "INSERT INTO agent_snapshots VALUES (?,?,?,?,?,?)", snapshots
-    )
+    conn.executemany("INSERT INTO agent_snapshots VALUES (?,?,?,?,?,?)", snapshots)
     conn.commit()
     conn.close()
 
@@ -111,7 +110,9 @@ class TestLoadAgentSummaries:
 
         load_agent_summaries.clear()
         df = load_agent_summaries(str(episode_dir))
-        assert df.loc[df["agent_id"] == "agent_001", "agent_type"].iloc[0] == "harvester"
+        assert (
+            df.loc[df["agent_id"] == "agent_001", "agent_type"].iloc[0] == "harvester"
+        )
         assert df.loc[df["agent_id"] == "agent_002", "agent_type"].iloc[0] == "trader"
 
     def test_credit_conversion(self, episode_dir: Path) -> None:

@@ -23,7 +23,9 @@ def render(episode_dir: str) -> None:
     else:
         # ── Filters ──────────────────────────────────────────────────
         max_tick = int(snapshots["tick"].max())
-        start_tick, end_tick = common.tick_range_selector(max_tick, key="awt_tick_range")
+        start_tick, end_tick = common.tick_range_selector(
+            max_tick, key="awt_tick_range"
+        )
 
         agent_ids = sorted(snapshots["agent_id"].unique())
         selected_agents = common.agent_filter(agent_ids, key="awt_agent_filter")
@@ -41,9 +43,7 @@ def render(episode_dir: str) -> None:
         st.subheader("Credit Balance Over Time")
 
         type_domain = sorted(filtered["agent_type"].unique())
-        type_range = [
-            common.AGENT_TYPE_COLORS.get(t, "#757575") for t in type_domain
-        ]
+        type_range = [common.AGENT_TYPE_COLORS.get(t, "#757575") for t in type_domain]
 
         chart = (
             alt.Chart(filtered)
