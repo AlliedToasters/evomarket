@@ -29,12 +29,12 @@ class TestCreditConversion:
     def test_survival_tax_conversion(self) -> None:
         config = SimulationConfig()
         wc = config.to_world_config()
-        assert wc.survival_tax == 1000
+        assert wc.survival_tax == round(config.survival_tax * MILLICREDITS_PER_CREDIT)
 
     def test_starting_credits_conversion(self) -> None:
-        config = SimulationConfig(starting_credits=30.0)
+        config = SimulationConfig()
         wc = config.to_world_config()
-        assert wc.starting_credits == 30_000
+        assert wc.starting_credits == round(config.starting_credits * MILLICREDITS_PER_CREDIT)
 
     def test_fractional_credits(self) -> None:
         config = SimulationConfig(starting_credits=30.5)

@@ -216,7 +216,7 @@ class EventLogger:
                 },
             }
             will_data = [
-                {"beneficiary": w.beneficiary_id, "credits": w.credits_transferred}
+                {"beneficiary": w.beneficiary_id, "credits": w.credits}
                 for w in d.will_distributions
             ]
             self._buffer.append(

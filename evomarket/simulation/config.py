@@ -35,14 +35,14 @@ class SimulationConfig:
     total_credit_supply: float = 10_000.0
 
     # Economy
-    survival_tax: float = 1.0
-    starting_credits: float = 30.0
+    survival_tax: float = 0.5
+    starting_credits: float = 50.0
     npc_base_price: float = 5.0
     npc_stockpile_capacity: int = 50
-    npc_budget_replenish_rate: float = 5.0
+    npc_budget_replenish_rate: float = 30.0
     npc_stockpile_decay_rate: float = 0.1
     treasury_min_reserve: float = 100.0
-    resource_spawn_rate: float = 0.5
+    resource_spawn_rate: float = 1.0
     node_resource_cap: int = 20
 
     # Population
@@ -50,7 +50,7 @@ class SimulationConfig:
     spawn_grace_period: int = 5
 
     # Trading
-    max_open_orders: int = 5
+    max_open_orders: int = 10
     max_pending_trades: int = 3
 
     # Death
