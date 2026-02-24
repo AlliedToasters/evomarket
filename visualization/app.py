@@ -33,7 +33,7 @@ def register_panel(name: str, render_func: Callable[[str], None]) -> None:
 # ---------------------------------------------------------------------------
 # import visualization.panels.time_series  # noqa: F401
 # import visualization.panels.agent_trajectories  # noqa: F401
-# import visualization.panels.spatial_graph  # noqa: F401
+import visualization.panels.spatial_graph  # noqa: F401
 # import visualization.panels.npc_heatmaps  # noqa: F401
 
 
