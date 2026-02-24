@@ -261,6 +261,55 @@ def load_config(episode_dir: str) -> dict:
 
 
 @st.cache_data
+def load_graph_topology(episode_dir: str) -> dict:
+    """Reconstruct the world graph topology from config.json.
+
+    Returns a dict with:
+      - nodes: dict of node_id → {name, node_type, adjacent_nodes, resource_distribution, npc_buys}
+      - edges: list of [node_a, node_b] pairs (deduplicated)
+    """
+    from evomarket.core.world import WorldConfig, generate_world
+
+    config = load_config(episode_dir)
+    seed = config.get("seed")
+    if seed is None:
+        raise ValueError(
+            "config.json does not contain a 'seed' field; "
+            "cannot reconstruct graph topology"
+        )
+
+    world_config_data = config.get("world_config", config)
+    world_config = WorldConfig.model_validate(world_config_data)
+    world = generate_world(world_config, seed)
+
+    nodes: dict[str, dict] = {}
+    seen_edges: set[tuple[str, str]] = set()
+    edges: list[list[str]] = []
+
+    for nid, node in world.nodes.items():
+        # Determine primary resource from distribution
+        dist = {k.value: v for k, v in node.resource_distribution.items()}
+        primary_resource = max(dist, key=dist.get) if dist else None
+
+        nodes[nid] = {
+            "name": node.name,
+            "node_type": node.node_type.value,
+            "adjacent_nodes": list(node.adjacent_nodes),
+            "resource_distribution": dist,
+            "npc_buys": [c.value for c in node.npc_buys],
+            "primary_resource": primary_resource,
+        }
+
+        for adj in node.adjacent_nodes:
+            edge_key = tuple(sorted((nid, adj)))
+            if edge_key not in seen_edges:
+                seen_edges.add(edge_key)
+                edges.append(list(edge_key))
+
+    return {"nodes": nodes, "edges": edges}
+
+
+@st.cache_data
 def load_result(episode_dir: str) -> dict:
     """Load result.json from the episode directory."""
     path = Path(episode_dir) / "result.json"
