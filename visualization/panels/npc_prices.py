@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from visualization import data
-from visualization.app import register_panel
+from visualization.registry import register_panel
 from visualization.common import COMMODITY_COLORS, tick_range_selector
 
 

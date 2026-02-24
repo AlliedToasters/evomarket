@@ -2,29 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 
 import streamlit as st
 
 from visualization import data
-
-# ---------------------------------------------------------------------------
-# Panel registry
-# ---------------------------------------------------------------------------
-
-_PANELS: dict[str, Callable[[str], None]] = {}
-
-
-def register_panel(name: str, render_func: Callable[[str], None]) -> None:
-    """Register a visualization panel.
-
-    Args:
-        name: Display name for the sidebar navigation.
-        render_func: Function called with the episode directory path as its
-            sole argument. It should render its content using Streamlit calls.
-    """
-    _PANELS[name] = render_func
+from visualization.registry import PANELS, register_panel  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -75,22 +58,45 @@ def main() -> None:
     # --- Sidebar: episode selection ---
     with st.sidebar:
         st.header("Episode")
-        episode_dir = st.text_input(
-            "Episode directory",
-            help="Path to a simulation output directory containing episode.sqlite",
+
+        # Auto-detect episode directories (contain episode.sqlite)
+        search_root = Path.cwd()
+        episode_dirs: list[str] = sorted(
+            str(p.parent.relative_to(search_root))
+            for p in search_root.rglob("episode.sqlite")
+            if ".venv" not in p.parts
         )
 
+        episode_dir: str | None = None
         db_path: str | None = None
-        if episode_dir:
-            sqlite_path = Path(episode_dir) / "episode.sqlite"
-            if sqlite_path.exists():
-                db_path = str(sqlite_path)
-                st.success(f"Loaded: {sqlite_path.name}")
-            else:
-                st.error(f"No episode.sqlite found in {episode_dir}")
+
+        if episode_dirs:
+            selected_dir = st.selectbox(
+                "Episode directory",
+                options=episode_dirs,
+                help="Detected directories containing episode.sqlite",
+            )
+            if selected_dir:
+                episode_dir = str(search_root / selected_dir)
+                db_path = str(Path(episode_dir) / "episode.sqlite")
+                st.success(f"Loaded: {selected_dir}")
+        else:
+            # Fallback to manual text input
+            manual_dir = st.text_input(
+                "Episode directory",
+                help="Path to a simulation output directory containing episode.sqlite",
+            )
+            if manual_dir:
+                episode_dir = manual_dir
+                sqlite_path = Path(manual_dir) / "episode.sqlite"
+                if sqlite_path.exists():
+                    db_path = str(sqlite_path)
+                    st.success(f"Loaded: {sqlite_path.name}")
+                else:
+                    st.error(f"No episode.sqlite found in {manual_dir}")
 
     # --- Sidebar: panel navigation ---
-    if not _PANELS:
+    if not PANELS:
         _welcome_page(episode_dir if db_path else None)
         return
 
@@ -98,7 +104,7 @@ def main() -> None:
         st.header("Panels")
         selected = st.radio(
             "Select panel",
-            options=list(_PANELS.keys()),
+            options=list(PANELS.keys()),
             label_visibility="collapsed",
         )
 
@@ -113,7 +119,7 @@ def main() -> None:
         st.error(f"No episode.sqlite found in {episode_dir}")
         return
 
-    _PANELS[selected](episode_dir)
+    PANELS[selected](episode_dir)
 
 
 if __name__ == "__main__":

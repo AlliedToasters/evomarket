@@ -5,7 +5,8 @@ from __future__ import annotations
 import altair as alt
 import streamlit as st
 
-from visualization import app, common, data
+from visualization import common, data
+from visualization.registry import register_panel
 
 
 def render(episode_dir: str) -> None:
@@ -69,6 +70,22 @@ def render(episode_dir: str) -> None:
     if summaries.empty:
         st.warning("No agent summary data available (result.json missing or empty).")
     else:
+        # Compute additional wealth measures from snapshots
+        if not snapshots.empty:
+            wealth_stats = (
+                snapshots.groupby("agent_id")["credits"]
+                .agg(max_credits="max", cumulative_credits="sum")
+                .reset_index()
+            )
+            summaries = summaries.merge(wealth_stats, on="agent_id", how="left")
+            summaries["max_credits"] = summaries["max_credits"].fillna(0.0)
+            summaries["cumulative_credits"] = summaries["cumulative_credits"].fillna(
+                0.0
+            )
+        else:
+            summaries["max_credits"] = 0.0
+            summaries["cumulative_credits"] = 0.0
+
         summaries_sorted = summaries.sort_values("net_worth", ascending=False)
         st.dataframe(
             summaries_sorted,
@@ -77,7 +94,15 @@ def render(episode_dir: str) -> None:
             column_config={
                 "agent_id": "Agent ID",
                 "agent_type": "Type",
-                "net_worth": st.column_config.NumberColumn("Net Worth", format="%.2f"),
+                "net_worth": st.column_config.NumberColumn(
+                    "Final Net Worth", format="%.2f"
+                ),
+                "max_credits": st.column_config.NumberColumn(
+                    "Max Credits", format="%.2f"
+                ),
+                "cumulative_credits": st.column_config.NumberColumn(
+                    "Cumulative Credits", format="%.1f"
+                ),
                 "lifetime": st.column_config.NumberColumn("Lifetime", format="%d"),
                 "total_trades": st.column_config.NumberColumn("Trades", format="%d"),
                 "final_credits": st.column_config.NumberColumn(
@@ -88,4 +113,4 @@ def render(episode_dir: str) -> None:
         )
 
 
-app.register_panel("Agent Wealth Trajectories", render)
+register_panel("Agent Wealth Trajectories", render)

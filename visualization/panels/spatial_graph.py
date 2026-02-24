@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from visualization import data
-from visualization.app import register_panel
+from visualization.registry import register_panel
 from visualization.common import NODE_TYPE_COLORS, format_credits
 
 # ---------------------------------------------------------------------------
@@ -226,6 +226,25 @@ def render_spatial_graph(episode_dir: str) -> None:
 
     max_tick = int(snapshots["tick"].max())
 
+    # Playback controls
+    col_play, col_speed = st.columns([1, 1])
+    with col_play:
+        playing = st.toggle("Play", key="spatial_play")
+    with col_speed:
+        step_size = st.selectbox(
+            "Step size", options=[1, 5, 10, 25], index=0, key="spatial_step"
+        )
+
+    # Auto-advance: update session state *before* slider is created
+    if playing:
+        import time
+
+        current = st.session_state.get("spatial_tick", 0)
+        if current < max_tick:
+            st.session_state["spatial_tick"] = min(current + step_size, max_tick)
+        else:
+            st.session_state["spatial_play"] = False
+
     # Tick slider
     selected_tick = st.slider(
         "Tick",
@@ -271,6 +290,13 @@ def render_spatial_graph(episode_dir: str) -> None:
         f"Tick {selected_tick} · {agent_count} agents alive · "
         f"Total wealth: {format_credits(int(total_wealth * _MILLICREDITS_PER_CREDIT))}"
     )
+
+    # Schedule rerun for next frame (after chart is rendered)
+    if playing and selected_tick < max_tick:
+        import time
+
+        time.sleep(0.15)
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------

@@ -268,7 +268,8 @@ def load_graph_topology(episode_dir: str) -> dict:
       - nodes: dict of node_id → {name, node_type, adjacent_nodes, resource_distribution, npc_buys}
       - edges: list of [node_a, node_b] pairs (deduplicated)
     """
-    from evomarket.core.world import WorldConfig, generate_world
+    from evomarket.core.world import generate_world
+    from evomarket.simulation.config import SimulationConfig
 
     config = load_config(episode_dir)
     seed = config.get("seed")
@@ -278,8 +279,8 @@ def load_graph_topology(episode_dir: str) -> dict:
             "cannot reconstruct graph topology"
         )
 
-    world_config_data = config.get("world_config", config)
-    world_config = WorldConfig.model_validate(world_config_data)
+    sim_config = SimulationConfig.from_json(config)
+    world_config = sim_config.to_world_config()
     world = generate_world(world_config, seed)
 
     nodes: dict[str, dict] = {}
