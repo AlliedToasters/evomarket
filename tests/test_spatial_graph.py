@@ -8,21 +8,22 @@ from pathlib import Path
 
 import pytest
 
-from evomarket.core.world import WorldConfig, generate_world
+from evomarket.simulation.config import SimulationConfig
 
 
 @pytest.fixture
 def episode_dir(tmp_path: Path) -> Path:
     """Create a minimal episode directory with config.json and episode.sqlite."""
-    config = WorldConfig()
-    seed = 42
-    world = generate_world(config, seed)
+    sim_config = SimulationConfig()
+    seed = sim_config.seed
+    world = sim_config.to_world_config()
 
-    # Write config.json matching expected format
-    config_data = {
-        "seed": seed,
-        "world_config": config.model_dump(mode="json"),
-    }
+    from evomarket.core.world import generate_world
+
+    world = generate_world(world, seed)
+
+    # Write config.json matching expected format (SimulationConfig-style flat dict)
+    config_data = sim_config.to_json()
     (tmp_path / "config.json").write_text(json.dumps(config_data))
 
     # Create a minimal episode.sqlite with agent_snapshots
@@ -112,7 +113,8 @@ class TestLoadGraphTopology:
 
         load_graph_topology.clear()
 
-        config_data = {"world_config": WorldConfig().model_dump(mode="json")}
+        config_data = SimulationConfig().to_json()
+        del config_data["seed"]
         (tmp_path / "config.json").write_text(json.dumps(config_data))
 
         with pytest.raises(ValueError, match="seed"):
