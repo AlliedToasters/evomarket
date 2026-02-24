@@ -37,7 +37,9 @@ class Node(BaseModel):
 
     @field_validator("resource_distribution")
     @classmethod
-    def _validate_distribution(cls, v: dict[CommodityType, float]) -> dict[CommodityType, float]:
+    def _validate_distribution(
+        cls, v: dict[CommodityType, float]
+    ) -> dict[CommodityType, float]:
         return validate_resource_distribution(v)
 
 
@@ -72,7 +74,9 @@ class WorldConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_config(self) -> WorldConfig:
-        if self.num_commodity_types < 1 or self.num_commodity_types > len(CommodityType):
+        if self.num_commodity_types < 1 or self.num_commodity_types > len(
+            CommodityType
+        ):
             raise ValueError(
                 f"num_commodity_types must be between 1 and {len(CommodityType)}, "
                 f"got {self.num_commodity_types}"
@@ -80,13 +84,15 @@ class WorldConfig(BaseModel):
         if self.population_size < 1:
             raise ValueError("population_size must be at least 1")
         if self.total_credit_supply < self.population_size * self.starting_credits:
-            raise ValueError("total_credit_supply insufficient to fund starting agent credits")
+            raise ValueError(
+                "total_credit_supply insufficient to fund starting agent credits"
+            )
         return self
 
 
 def _get_commodity_types(config: WorldConfig) -> list[CommodityType]:
     """Return the commodity types in use based on config."""
-    return list(CommodityType)[:config.num_commodity_types]
+    return list(CommodityType)[: config.num_commodity_types]
 
 
 def _verify_connectivity(nodes: dict[str, Node]) -> None:
@@ -253,7 +259,9 @@ def generate_world(config: WorldConfig, seed: int) -> WorldState:
 
     # Allocate NPC budgets from total supply
     npc_nodes = [n for n in nodes.values() if n.npc_buys]
-    initial_budget_per_node = config.total_credit_supply // (10 * max(1, len(npc_nodes)))
+    initial_budget_per_node = config.total_credit_supply // (
+        10 * max(1, len(npc_nodes))
+    )
     total_npc_budget = 0
     for node in npc_nodes:
         node.npc_budget = initial_budget_per_node
@@ -342,15 +350,27 @@ class WorldState:
         self.next_agent_id = next_agent_id
         self.config = config
         self.rng = rng
-        self.pending_messages: list[Message] = pending_messages if pending_messages is not None else []
-        self.delivered_messages: dict[str, list[Message]] = delivered_messages if delivered_messages is not None else {}
-        self.broadcast_history: dict[str, list[Message]] = broadcast_history if broadcast_history is not None else {}
+        self.pending_messages: list[Message] = (
+            pending_messages if pending_messages is not None else []
+        )
+        self.delivered_messages: dict[str, list[Message]] = (
+            delivered_messages if delivered_messages is not None else {}
+        )
+        self.broadcast_history: dict[str, list[Message]] = (
+            broadcast_history if broadcast_history is not None else {}
+        )
         self.next_message_seq = next_message_seq
         # Trading state (typed as object to avoid circular import;
         # actual types are PostedOrder, TradeProposal, TradeResult)
-        self.order_book: dict[str, object] = order_book if order_book is not None else {}
-        self.trade_proposals: dict[str, object] = trade_proposals if trade_proposals is not None else {}
-        self.trade_history: dict[str, list[object]] = trade_history if trade_history is not None else {}
+        self.order_book: dict[str, object] = (
+            order_book if order_book is not None else {}
+        )
+        self.trade_proposals: dict[str, object] = (
+            trade_proposals if trade_proposals is not None else {}
+        )
+        self.trade_history: dict[str, list[object]] = (
+            trade_history if trade_history is not None else {}
+        )
         self.next_order_seq: int = next_order_seq
 
     def verify_invariant(self) -> None:
@@ -478,7 +498,9 @@ class WorldState:
                 "trade_type": r.trade_type,
                 "buyer_id": r.buyer_id,
                 "seller_id": r.seller_id,
-                "items_transferred": {k.value: v for k, v in r.items_transferred.items()},
+                "items_transferred": {
+                    k.value: v for k, v in r.items_transferred.items()
+                },
                 "credits_transferred": r.credits_transferred,
                 "failure_reason": r.failure_reason,
                 "tick": r.tick,
@@ -500,14 +522,18 @@ class WorldState:
 
         return {
             "nodes": {nid: n.model_dump(mode="json") for nid, n in self.nodes.items()},
-            "agents": {aid: a.model_dump(mode="json") for aid, a in self.agents.items()},
+            "agents": {
+                aid: a.model_dump(mode="json") for aid, a in self.agents.items()
+            },
             "treasury": self.treasury,
             "total_supply": self.total_supply,
             "tick": self.tick,
             "next_agent_id": self.next_agent_id,
             "config": self.config.model_dump(mode="json"),
             "rng_state": self.rng.getstate(),
-            "pending_messages": [m.model_dump(mode="json") for m in self.pending_messages],
+            "pending_messages": [
+                m.model_dump(mode="json") for m in self.pending_messages
+            ],
             "delivered_messages": {
                 aid: [m.model_dump(mode="json") for m in msgs]
                 for aid, msgs in self.delivered_messages.items()
@@ -534,8 +560,12 @@ class WorldState:
             TradeResult,
         )
 
-        nodes = {nid: Node.model_validate(ndata) for nid, ndata in data["nodes"].items()}
-        agents = {aid: Agent.model_validate(adata) for aid, adata in data["agents"].items()}
+        nodes = {
+            nid: Node.model_validate(ndata) for nid, ndata in data["nodes"].items()
+        }
+        agents = {
+            aid: Agent.model_validate(adata) for aid, adata in data["agents"].items()
+        }
         config = WorldConfig.model_validate(data["config"])
         rng = random.Random()
         rng.setstate(data["rng_state"])
@@ -569,7 +599,9 @@ class WorldState:
                     trade_type=r["trade_type"],
                     buyer_id=r["buyer_id"],
                     seller_id=r["seller_id"],
-                    items_transferred={CT(k): v for k, v in r["items_transferred"].items()},
+                    items_transferred={
+                        CT(k): v for k, v in r["items_transferred"].items()
+                    },
                     credits_transferred=r["credits_transferred"],
                     failure_reason=r["failure_reason"],
                     tick=r["tick"],

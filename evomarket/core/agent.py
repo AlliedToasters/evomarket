@@ -25,10 +25,14 @@ class Agent(BaseModel):
 
     @field_validator("inventory")
     @classmethod
-    def _validate_inventory(cls, v: dict[CommodityType, int]) -> dict[CommodityType, int]:
+    def _validate_inventory(
+        cls, v: dict[CommodityType, int]
+    ) -> dict[CommodityType, int]:
         for commodity, qty in v.items():
             if qty < 0:
-                raise ValueError(f"Inventory for {commodity} must be non-negative, got {qty}")
+                raise ValueError(
+                    f"Inventory for {commodity} must be non-negative, got {qty}"
+                )
         return v
 
     @field_validator("will")
@@ -36,7 +40,9 @@ class Agent(BaseModel):
     def _validate_will(cls, v: dict[str, float]) -> dict[str, float]:
         for agent_id, pct in v.items():
             if pct < 0:
-                raise ValueError(f"Will percentage for {agent_id} must be non-negative, got {pct}")
+                raise ValueError(
+                    f"Will percentage for {agent_id} must be non-negative, got {pct}"
+                )
         total = sum(v.values())
         if total > 1.0 + 1e-9:
             raise ValueError(f"Will percentages sum to {total}, must be ≤ 1.0")

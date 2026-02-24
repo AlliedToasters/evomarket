@@ -4,12 +4,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from evomarket.core.types import CommodityType, Millicredits
+from evomarket.core.types import CommodityType
 from evomarket.core.world import WorldConfig, WorldState, generate_world
 from evomarket.engine.economy import (
-    NpcTransactionResult,
-    ReplenishResult,
-    TaxResult,
     collect_tax,
     decay_npc_stockpiles,
     fund_spawn,
@@ -69,7 +66,10 @@ class TestProcessNpcSell:
         assert result.units_sold == 1
         assert result.price_per_unit == [world.config.npc_base_price]
         assert result.total_credits_received == world.config.npc_base_price
-        assert world.agents[agent_id].credits == initial_credits + world.config.npc_base_price
+        assert (
+            world.agents[agent_id].credits
+            == initial_credits + world.config.npc_base_price
+        )
         assert world.agents[agent_id].inventory[CommodityType.IRON] == 4
         assert world.nodes[node_id].npc_stockpile[CommodityType.IRON] == 1
 
@@ -89,13 +89,15 @@ class TestProcessNpcSell:
         # Unit 1: stockpile=0 → base * (cap-0)//cap = base
         # Unit 2: stockpile=1 → base * (cap-1)//cap
         # Unit 3: stockpile=2 → base * (cap-2)//cap
-        expected_prices = [
-            base * (capacity - i) // capacity for i in range(3)
-        ]
+        expected_prices = [base * (capacity - i) // capacity for i in range(3)]
         assert result.price_per_unit == expected_prices
         assert result.total_credits_received == sum(expected_prices)
         # Prices should be descending
-        assert result.price_per_unit[0] >= result.price_per_unit[1] >= result.price_per_unit[2]
+        assert (
+            result.price_per_unit[0]
+            >= result.price_per_unit[1]
+            >= result.price_per_unit[2]
+        )
 
     def test_budget_constrained_sale(self, standard_world: WorldState) -> None:
         world = standard_world
@@ -171,7 +173,8 @@ class TestGetNpcPrices:
         world = standard_world
         # Trade hubs buy all commodities
         hub_id = next(
-            nid for nid, n in world.nodes.items()
+            nid
+            for nid, n in world.nodes.items()
             if len(n.npc_buys) == len(CommodityType)
         )
         prices = get_npc_prices(world, hub_id)
@@ -184,8 +187,7 @@ class TestGetNpcPrices:
         world = standard_world
         # Resource nodes typically buy only their native commodity
         resource_id = next(
-            nid for nid, n in world.nodes.items()
-            if len(n.npc_buys) == 1
+            nid for nid, n in world.nodes.items() if len(n.npc_buys) == 1
         )
         node = world.nodes[resource_id]
         prices = get_npc_prices(world, resource_id)
@@ -205,7 +207,7 @@ class TestReplenishNpcBudgets:
     def test_equal_distribution(self, standard_world: WorldState) -> None:
         world = standard_world
         npc_nodes = [nid for nid, n in world.nodes.items() if n.npc_buys]
-        initial_budgets = {nid: world.nodes[nid].npc_budget for nid in npc_nodes}
+        _ = {nid: world.nodes[nid].npc_budget for nid in npc_nodes}
 
         result = replenish_npc_budgets(world)
 
@@ -387,7 +389,9 @@ class TestFundSpawn:
         assert result is False
         assert world.treasury == initial_treasury  # unchanged
 
-    def test_invariant_after_fund_and_agent_creation(self, standard_world: WorldState) -> None:
+    def test_invariant_after_fund_and_agent_creation(
+        self, standard_world: WorldState
+    ) -> None:
         """Invariant holds once caller completes the spawn by adding the agent."""
         world = standard_world
         amount = world.config.starting_credits
@@ -447,9 +451,9 @@ class TestInvariantPropertyBased:
                 agent_id = rng.choice(agent_ids)
                 commodity = rng.choice(commodities)
                 # Give agent some inventory for the sell
-                world.agents[agent_id].inventory[commodity] = (
-                    world.agents[agent_id].inventory.get(commodity, 0) + rng.randint(1, 5)
-                )
+                world.agents[agent_id].inventory[commodity] = world.agents[
+                    agent_id
+                ].inventory.get(commodity, 0) + rng.randint(1, 5)
                 node_id = world.agents[agent_id].location
                 if commodity in world.nodes[node_id].npc_buys:
                     process_npc_sell(world, agent_id, commodity, rng.randint(1, 3))

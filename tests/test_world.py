@@ -34,7 +34,10 @@ class TestNodeModel:
                 node_id="node_bad",
                 name="Bad",
                 node_type=NodeType.RESOURCE,
-                resource_distribution={CommodityType.IRON: 0.8, CommodityType.WOOD: 0.5},
+                resource_distribution={
+                    CommodityType.IRON: 0.8,
+                    CommodityType.WOOD: 0.5,
+                },
                 resource_spawn_rate=0.5,
                 resource_stockpile={},
                 resource_cap=20,
@@ -115,7 +118,10 @@ class TestWorldGeneration:
         assert w1.treasury == w2.treasury
         for nid in w1.nodes:
             assert w1.nodes[nid].adjacent_nodes == w2.nodes[nid].adjacent_nodes
-            assert w1.nodes[nid].resource_distribution == w2.nodes[nid].resource_distribution
+            assert (
+                w1.nodes[nid].resource_distribution
+                == w2.nodes[nid].resource_distribution
+            )
 
     def test_different_seeds_differ(self) -> None:
         config = WorldConfig()
@@ -123,16 +129,20 @@ class TestWorldGeneration:
         w2 = generate_world(config, seed=99)
         # At least node topology or resource distribution should differ
         nodes_same = all(
-            w1.nodes[nid].resource_distribution == w2.nodes.get(nid, w1.nodes[nid]).resource_distribution
+            w1.nodes[nid].resource_distribution
+            == w2.nodes.get(nid, w1.nodes[nid]).resource_distribution
             for nid in w1.nodes
             if nid in w2.nodes
         )
         adj_same = all(
-            set(w1.nodes[nid].adjacent_nodes) == set(w2.nodes.get(nid, w1.nodes[nid]).adjacent_nodes)
+            set(w1.nodes[nid].adjacent_nodes)
+            == set(w2.nodes.get(nid, w1.nodes[nid]).adjacent_nodes)
             for nid in w1.nodes
             if nid in w2.nodes
         )
-        assert not (nodes_same and adj_same), "Different seeds should produce different worlds"
+        assert not (nodes_same and adj_same), (
+            "Different seeds should produce different worlds"
+        )
 
     def test_graph_connectivity(self, standard_world: WorldState) -> None:
         start = next(iter(standard_world.nodes))
@@ -155,7 +165,9 @@ class TestWorldGeneration:
         """Resource nodes in the same cluster should share a primary commodity."""
         for node in standard_world.nodes.values():
             if node.node_type == NodeType.RESOURCE and node.resource_distribution:
-                max_commodity = max(node.resource_distribution, key=node.resource_distribution.get)  # type: ignore[arg-type]
+                max_commodity = max(
+                    node.resource_distribution, key=node.resource_distribution.get
+                )  # type: ignore[arg-type]
                 assert node.resource_distribution[max_commodity] >= 0.5, (
                     f"Resource node {node.node_id} has no dominant commodity (max weight < 0.5)"
                 )
@@ -168,8 +180,14 @@ class TestWorldGeneration:
                 adj_commodities: set[CommodityType] = set()
                 for adj_id in node.adjacent_nodes:
                     adj_node = standard_world.nodes[adj_id]
-                    if adj_node.node_type == NodeType.RESOURCE and adj_node.resource_distribution:
-                        primary = max(adj_node.resource_distribution, key=adj_node.resource_distribution.get)  # type: ignore[arg-type]
+                    if (
+                        adj_node.node_type == NodeType.RESOURCE
+                        and adj_node.resource_distribution
+                    ):
+                        primary = max(
+                            adj_node.resource_distribution,
+                            key=adj_node.resource_distribution.get,
+                        )  # type: ignore[arg-type]
                         adj_commodities.add(primary)
                 # Hub's own cluster resource nodes count as 1, it may connect to others
                 assert len(adj_commodities) >= 1, (
@@ -195,7 +213,9 @@ class TestWorldGeneration:
             world = generate_world(config, seed=seed)
             start = next(iter(world.nodes))
             reachable = _bfs_reachable(world.nodes, start)
-            assert reachable == set(world.nodes.keys()), f"Disconnected graph at seed={seed}"
+            assert reachable == set(world.nodes.keys()), (
+                f"Disconnected graph at seed={seed}"
+            )
 
 
 class TestAdjacencyQuery:

@@ -185,7 +185,9 @@ class TestActionModels:
         assert a.action_type == "harvest"
 
     def test_post_order_action(self) -> None:
-        a = PostOrderAction(side="sell", commodity=CommodityType.IRON, quantity=3, price=5000)
+        a = PostOrderAction(
+            side="sell", commodity=CommodityType.IRON, quantity=3, price=5000
+        )
         assert a.action_type == "post_order"
         assert a.side == "sell"
         assert a.commodity == CommodityType.IRON
@@ -244,7 +246,9 @@ class TestActionModels:
         actions = [
             MoveAction(target_node="node_a"),
             HarvestAction(),
-            PostOrderAction(side="buy", commodity=CommodityType.WOOD, quantity=2, price=3000),
+            PostOrderAction(
+                side="buy", commodity=CommodityType.WOOD, quantity=2, price=3000
+            ),
             IdleAction(),
         ]
         for original in actions:
@@ -303,11 +307,15 @@ class TestPydanticValidators:
 
     def test_post_order_zero_quantity(self) -> None:
         with pytest.raises(ValidationError):
-            PostOrderAction(side="buy", commodity=CommodityType.IRON, quantity=0, price=5000)
+            PostOrderAction(
+                side="buy", commodity=CommodityType.IRON, quantity=0, price=5000
+            )
 
     def test_post_order_negative_price(self) -> None:
         with pytest.raises(ValidationError):
-            PostOrderAction(side="sell", commodity=CommodityType.IRON, quantity=1, price=-100)
+            PostOrderAction(
+                side="sell", commodity=CommodityType.IRON, quantity=1, price=-100
+            )
 
     def test_propose_trade_invalid_key(self) -> None:
         with pytest.raises(ValidationError):
@@ -374,22 +382,30 @@ class TestValidation:
     # --- PostOrder ---
 
     def test_post_sell_order_valid(self, world: WorldState) -> None:
-        action = PostOrderAction(side="sell", commodity=CommodityType.IRON, quantity=3, price=5000)
+        action = PostOrderAction(
+            side="sell", commodity=CommodityType.IRON, quantity=3, price=5000
+        )
         result = validate_action("agent_001", action, world)
         assert isinstance(result, PostOrderAction)
 
     def test_post_sell_order_insufficient(self, world: WorldState) -> None:
-        action = PostOrderAction(side="sell", commodity=CommodityType.IRON, quantity=10, price=5000)
+        action = PostOrderAction(
+            side="sell", commodity=CommodityType.IRON, quantity=10, price=5000
+        )
         result = validate_action("agent_001", action, world)
         assert isinstance(result, IdleAction)
 
     def test_post_buy_order_valid(self, world: WorldState) -> None:
-        action = PostOrderAction(side="buy", commodity=CommodityType.IRON, quantity=3, price=5000)
+        action = PostOrderAction(
+            side="buy", commodity=CommodityType.IRON, quantity=3, price=5000
+        )
         result = validate_action("agent_001", action, world)
         assert isinstance(result, PostOrderAction)
 
     def test_post_buy_order_insufficient_credits(self, world: WorldState) -> None:
-        action = PostOrderAction(side="buy", commodity=CommodityType.IRON, quantity=10, price=5000)
+        action = PostOrderAction(
+            side="buy", commodity=CommodityType.IRON, quantity=10, price=5000
+        )
         result = validate_action("agent_001", action, world)
         assert isinstance(result, IdleAction)
 
@@ -397,13 +413,16 @@ class TestValidation:
         # Fill up max open orders using trading module
         for i in range(world.config.max_open_orders):
             post_order(
-                world, "agent_001",
+                world,
+                "agent_001",
                 side=BuySell.SELL,
                 commodity=CommodityType.IRON,
                 quantity=1,
                 price_per_unit=1000,
             )
-        action = PostOrderAction(side="sell", commodity=CommodityType.IRON, quantity=1, price=1000)
+        action = PostOrderAction(
+            side="sell", commodity=CommodityType.IRON, quantity=1, price=1000
+        )
         result = validate_action("agent_001", action, world)
         assert isinstance(result, IdleAction)
 
@@ -412,7 +431,8 @@ class TestValidation:
     def test_accept_order_valid(self, world: WorldState) -> None:
         # Create a sell order at node_iron using trading module
         order = post_order(
-            world, "agent_001",
+            world,
+            "agent_001",
             side=BuySell.SELL,
             commodity=CommodityType.IRON,
             quantity=2,
@@ -433,7 +453,8 @@ class TestValidation:
         world.agents["agent_000"].location = "node_wood"
         world.agents["agent_000"].inventory[CommodityType.WOOD] = 5
         order = post_order(
-            world, "agent_000",
+            world,
+            "agent_000",
             side=BuySell.SELL,
             commodity=CommodityType.WOOD,
             quantity=1,
@@ -498,7 +519,9 @@ class TestValidation:
     def test_accept_trade_valid(self, world: WorldState) -> None:
         # Create a trade proposal using trading module
         proposal = propose_trade(
-            world, "agent_001", "agent_002",
+            world,
+            "agent_001",
+            "agent_002",
             offer_commodities={CommodityType.IRON: 2},
             request_credits=5000,
         )
@@ -509,7 +532,9 @@ class TestValidation:
 
     def test_accept_trade_not_for_agent(self, world: WorldState) -> None:
         proposal = propose_trade(
-            world, "agent_001", "agent_002",
+            world,
+            "agent_001",
+            "agent_002",
             offer_commodities={CommodityType.IRON: 2},
             request_credits=5000,
         )
@@ -607,8 +632,13 @@ class TestHarvestResolution:
         initial_inv = world.agents["agent_001"].inventory[CommodityType.IRON]
         actions: dict[str, Action] = {"agent_001": HarvestAction()}
         resolve_actions(world, actions)
-        assert world.nodes["node_iron"].resource_stockpile[CommodityType.IRON] == initial_iron - 1.0
-        assert world.agents["agent_001"].inventory[CommodityType.IRON] == initial_inv + 1
+        assert (
+            world.nodes["node_iron"].resource_stockpile[CommodityType.IRON]
+            == initial_iron - 1.0
+        )
+        assert (
+            world.agents["agent_001"].inventory[CommodityType.IRON] == initial_inv + 1
+        )
 
     def test_harvest_conflict_stock_depletion(self, world: WorldState) -> None:
         """Multiple agents harvest, only those with priority get resources."""
@@ -650,7 +680,8 @@ class TestAcceptOrderConflict:
     def test_single_accept(self, world: WorldState) -> None:
         # Create a sell order using trading module
         order = post_order(
-            world, "agent_001",
+            world,
+            "agent_001",
             side=BuySell.SELL,
             commodity=CommodityType.IRON,
             quantity=2,
@@ -671,7 +702,8 @@ class TestAcceptOrderConflict:
         world.agents["agent_000"].location = "node_iron"
 
         order = post_order(
-            world, "agent_001",
+            world,
+            "agent_001",
             side=BuySell.SELL,
             commodity=CommodityType.IRON,
             quantity=1,
@@ -701,7 +733,6 @@ class TestTradeLifecycle:
 
     def test_full_trade_lifecycle(self, world: WorldState) -> None:
         """agent_001 proposes trade to agent_002, then agent_002 accepts."""
-        initial_iron_001 = world.agents["agent_001"].inventory[CommodityType.IRON]
         initial_iron_002 = world.agents["agent_002"].inventory[CommodityType.IRON]
         initial_credits_002 = world.agents["agent_002"].credits
 
@@ -719,7 +750,8 @@ class TestTradeLifecycle:
 
         # Find the trade proposal
         pending = [
-            tid for tid, p in world.trade_proposals.items()
+            tid
+            for tid, p in world.trade_proposals.items()
             if getattr(p, "status", None) == TradeStatus.PENDING
         ]
         assert len(pending) == 1
@@ -733,14 +765,15 @@ class TestTradeLifecycle:
         assert results[0].success is True
 
         # agent_002 received 2 IRON and paid 5000 credits
-        assert world.agents["agent_002"].inventory[CommodityType.IRON] == initial_iron_002 + 2
+        assert (
+            world.agents["agent_002"].inventory[CommodityType.IRON]
+            == initial_iron_002 + 2
+        )
         assert world.agents["agent_002"].credits == initial_credits_002 - 5000
         world.verify_invariant()
 
     def test_trade_with_credits_offer(self, world: WorldState) -> None:
         """Test trade where the offer includes credits."""
-        initial_credits_001 = world.agents["agent_001"].credits
-
         propose_actions: dict[str, Action] = {
             "agent_001": ProposeTradeAction(
                 target_agent="agent_002",
@@ -796,7 +829,8 @@ class TestNpcSellResolution:
         resolve_actions(world, actions)
         # The order was posted but NPC couldn't fill — order should still exist
         sell_orders = [
-            o for o in world.order_book.values()
+            o
+            for o in world.order_book.values()
             if getattr(o, "status", None) == OrderStatus.ACTIVE
             and getattr(o, "side", None) == BuySell.SELL
         ]
@@ -906,7 +940,8 @@ class TestInvariantPreservation:
         world.verify_invariant()
 
         pending = [
-            tid for tid, p in world.trade_proposals.items()
+            tid
+            for tid, p in world.trade_proposals.items()
             if getattr(p, "status", None) == TradeStatus.PENDING
         ]
         trade_id = pending[0]
@@ -951,7 +986,9 @@ class TestEdgeCases:
         """Agent with zero credits can't post buy order."""
         world.agents["agent_001"].credits = 0
         world.treasury += 30_000
-        action = PostOrderAction(side="buy", commodity=CommodityType.IRON, quantity=1, price=1000)
+        action = PostOrderAction(
+            side="buy", commodity=CommodityType.IRON, quantity=1, price=1000
+        )
         result = validate_action("agent_001", action, world)
         assert isinstance(result, IdleAction)
 
@@ -977,7 +1014,9 @@ class TestEdgeCases:
         """Accept trade fails if acceptor no longer has required items."""
         # Create a pending trade requesting 50000 credits from agent_002
         proposal = propose_trade(
-            world, "agent_001", "agent_002",
+            world,
+            "agent_001",
+            "agent_002",
             offer_commodities={CommodityType.IRON: 1},
             request_credits=50000,
         )
@@ -1016,7 +1055,8 @@ class TestEdgeCases:
 
         # Find the active order
         active_orders = [
-            oid for oid, o in world.order_book.items()
+            oid
+            for oid, o in world.order_book.items()
             if getattr(o, "status", None) == OrderStatus.ACTIVE
         ]
         assert len(active_orders) == 1
@@ -1044,7 +1084,8 @@ class TestEdgeCases:
         world.verify_invariant()
 
         active_orders = [
-            oid for oid, o in world.order_book.items()
+            oid
+            for oid, o in world.order_book.items()
             if getattr(o, "status", None) == OrderStatus.ACTIVE
         ]
         assert len(active_orders) == 1

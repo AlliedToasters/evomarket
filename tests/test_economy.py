@@ -142,7 +142,12 @@ class TestNpcPricing:
     def test_commodity_not_bought(self, world: WorldState) -> None:
         # Find a node and a commodity it doesn't buy
         for nid, node in world.nodes.items():
-            commodities = [CommodityType.IRON, CommodityType.WOOD, CommodityType.STONE, CommodityType.HERBS]
+            commodities = [
+                CommodityType.IRON,
+                CommodityType.WOOD,
+                CommodityType.STONE,
+                CommodityType.HERBS,
+            ]
             for c in commodities:
                 if c not in node.npc_buys:
                     assert world.get_npc_price(nid, c) == 0
@@ -162,7 +167,9 @@ class TestTreasury:
         world = generate_world(config, seed=42)
         agent_credits = sum(a.credits for a in world.agents.values())
         npc_budgets = sum(n.npc_budget for n in world.nodes.values())
-        assert world.treasury == config.total_credit_supply - agent_credits - npc_budgets
+        assert (
+            world.treasury == config.total_credit_supply - agent_credits - npc_budgets
+        )
 
     def test_treasury_non_negative(self, world: WorldState) -> None:
         assert world.treasury >= 0
@@ -192,7 +199,7 @@ class TestAgentsAtNode:
 class TestCheckpointing:
     def test_round_trip(self, world: WorldState) -> None:
         # Generate some RNG values before serializing
-        val1 = world.rng.random()
+        world.rng.random()
 
         data = world.to_json()
         restored = WorldState.from_json(data)

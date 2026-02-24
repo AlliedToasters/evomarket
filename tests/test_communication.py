@@ -34,7 +34,6 @@ def _make_agent(agent_id: str, location: str, alive: bool = True) -> Agent:
 @pytest.fixture
 def simple_world() -> WorldState:
     """A minimal world with 2 agents at the same node."""
-    import random
 
     config = WorldConfig(
         num_nodes=5,
@@ -112,7 +111,11 @@ class TestSendPrivateMessage:
 
     def test_reject_different_node(self, simple_world: WorldState) -> None:
         # Move agent_002 to a different node
-        other_node = [n for n in simple_world.nodes if n != simple_world.agents["agent_001"].location][0]
+        other_node = [
+            n
+            for n in simple_world.nodes
+            if n != simple_world.agents["agent_001"].location
+        ][0]
         simple_world.agents["agent_002"].location = other_node
         action = SendMessageAction(
             sender_id="agent_001", recipient="agent_002", text="hello"
@@ -169,7 +172,11 @@ class TestSendBroadcastMessage:
 
     def test_broadcast_no_others(self, simple_world: WorldState) -> None:
         # Move agent_002 away
-        other_node = [n for n in simple_world.nodes if n != simple_world.agents["agent_001"].location][0]
+        other_node = [
+            n
+            for n in simple_world.nodes
+            if n != simple_world.agents["agent_001"].location
+        ][0]
         simple_world.agents["agent_002"].location = other_node
         action = SendMessageAction(
             sender_id="agent_001", recipient="broadcast", text="anyone?"
@@ -228,7 +235,11 @@ class TestDeliverPendingMessages:
         )
         send_message(simple_world, action)
         # Move recipient to a different node before delivery
-        other_node = [n for n in simple_world.nodes if n != simple_world.agents["agent_002"].location][0]
+        other_node = [
+            n
+            for n in simple_world.nodes
+            if n != simple_world.agents["agent_002"].location
+        ][0]
         simple_world.agents["agent_002"].location = other_node
         count = deliver_pending_messages(simple_world)
         assert count == 1

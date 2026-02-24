@@ -132,7 +132,9 @@ def get_messages_for_agent(world: WorldState, agent_id: str) -> list[Message]:
     return sorted(messages, key=lambda m: m.message_id)
 
 
-def get_message_history(world: WorldState, node_id: str, limit: int | None = None) -> list[Message]:
+def get_message_history(
+    world: WorldState, node_id: str, limit: int | None = None
+) -> list[Message]:
     """Return recent broadcast messages at a node, most recent first."""
     history = world.broadcast_history.get(node_id, [])
     result = list(reversed(history))

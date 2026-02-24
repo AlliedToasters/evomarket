@@ -158,7 +158,9 @@ def _transfer_commodities(
     to_agent = world.agents[to_id]
     for commodity, qty in commodities.items():
         if qty > 0:
-            from_agent.inventory[commodity] = from_agent.inventory.get(commodity, 0) - qty
+            from_agent.inventory[commodity] = (
+                from_agent.inventory.get(commodity, 0) - qty
+            )
             to_agent.inventory[commodity] = to_agent.inventory.get(commodity, 0) + qty
 
 
@@ -242,7 +244,9 @@ def cancel_order(world: WorldState, agent_id: str, order_id: str) -> bool:
     if order is None:
         return False
     if order.poster_id != agent_id:
-        logger.warning("Agent %s cannot cancel order %s (not poster)", agent_id, order_id)
+        logger.warning(
+            "Agent %s cannot cancel order %s (not poster)", agent_id, order_id
+        )
         return False
     if order.status in (OrderStatus.FILLED, OrderStatus.CANCELLED):
         return False
@@ -367,9 +371,7 @@ def accept_order(world: WorldState, agent_id: str, order_id: str) -> TradeResult
     return result
 
 
-def suspend_orders_for_agent(
-    world: WorldState, agent_id: str, node_id: str
-) -> None:
+def suspend_orders_for_agent(world: WorldState, agent_id: str, node_id: str) -> None:
     """Suspend all ACTIVE orders for an agent at a node (called on departure)."""
     for order in world.order_book.values():
         if (
@@ -380,9 +382,7 @@ def suspend_orders_for_agent(
             order.status = OrderStatus.SUSPENDED
 
 
-def reactivate_orders_for_agent(
-    world: WorldState, agent_id: str, node_id: str
-) -> None:
+def reactivate_orders_for_agent(world: WorldState, agent_id: str, node_id: str) -> None:
     """Reactivate all SUSPENDED orders for an agent at a node (called on arrival)."""
     for order in world.order_book.values():
         if (

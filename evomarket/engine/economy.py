@@ -155,9 +155,7 @@ def decay_npc_stockpiles(world: WorldState) -> None:
             node.npc_stockpile[commodity] = max(0, stockpile - decay_amount)
 
 
-def collect_tax(
-    world: WorldState, agent_id: str, amount: Millicredits
-) -> TaxResult:
+def collect_tax(world: WorldState, agent_id: str, amount: Millicredits) -> TaxResult:
     """Collect survival tax from an agent. Takes whatever the agent has if insufficient."""
     agent = world.agents[agent_id]
     actual = min(amount, agent.credits)

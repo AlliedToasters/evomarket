@@ -112,7 +112,9 @@ class ProposeTradeAction(BaseAction):
                     f"Must be a CommodityType value or 'credits'"
                 )
             if qty <= 0:
-                raise ValueError(f"Trade item quantity must be positive, got {qty} for {key}")
+                raise ValueError(
+                    f"Trade item quantity must be positive, got {qty} for {key}"
+                )
         return v
 
 
@@ -268,7 +270,9 @@ def _validate_move(
     agent_id: str, action: MoveAction, world: WorldState, agent: Agent
 ) -> Action:
     if action.target_node not in world.nodes:
-        return _invalid(agent_id, "move", f"target node {action.target_node} does not exist")
+        return _invalid(
+            agent_id, "move", f"target node {action.target_node} does not exist"
+        )
     if action.target_node not in world.adjacent_nodes(agent.location):
         return _invalid(
             agent_id,
@@ -284,10 +288,14 @@ def _validate_harvest(
     node = world.nodes[agent.location]
     if node.node_type != NodeType.RESOURCE:
         return _invalid(
-            agent_id, "harvest", f"node {agent.location} is {node.node_type.value}, not RESOURCE"
+            agent_id,
+            "harvest",
+            f"node {agent.location} is {node.node_type.value}, not RESOURCE",
         )
     if not any(math.floor(qty) >= 1 for qty in node.resource_stockpile.values()):
-        return _invalid(agent_id, "harvest", f"no harvestable resources at {agent.location}")
+        return _invalid(
+            agent_id, "harvest", f"no harvestable resources at {agent.location}"
+        )
     return action
 
 
@@ -298,7 +306,9 @@ def _validate_post_order(
     agent_order_count = len(world.orders_for_agent(agent_id))
     if agent_order_count >= world.config.max_open_orders:
         return _invalid(
-            agent_id, "post_order", f"at max open orders ({world.config.max_open_orders})"
+            agent_id,
+            "post_order",
+            f"at max open orders ({world.config.max_open_orders})",
         )
 
     if action.side == "buy":
@@ -326,7 +336,9 @@ def _validate_accept_order(
 ) -> Action:
     order = world.order_book.get(action.order_id)
     if order is None:
-        return _invalid(agent_id, "accept_order", f"order {action.order_id} does not exist")
+        return _invalid(
+            agent_id, "accept_order", f"order {action.order_id} does not exist"
+        )
     if getattr(order, "node_id", None) != agent.location:
         return _invalid(
             agent_id,
@@ -423,12 +435,16 @@ def _validate_accept_trade(
 ) -> Action:
     proposal = world.trade_proposals.get(action.trade_id)
     if proposal is None:
-        return _invalid(agent_id, "accept_trade", f"trade {action.trade_id} does not exist")
+        return _invalid(
+            agent_id, "accept_trade", f"trade {action.trade_id} does not exist"
+        )
 
     from evomarket.engine.trading import TradeStatus
 
     if getattr(proposal, "status", None) != TradeStatus.PENDING:
-        return _invalid(agent_id, "accept_trade", f"trade {action.trade_id} is not pending")
+        return _invalid(
+            agent_id, "accept_trade", f"trade {action.trade_id} is not pending"
+        )
 
     if getattr(proposal, "target_id", None) != agent_id:
         return _invalid(
@@ -584,9 +600,7 @@ def _resolve_single(
     )
 
 
-def _resolve_move(
-    agent_id: str, action: MoveAction, world: WorldState
-) -> ActionResult:
+def _resolve_move(agent_id: str, action: MoveAction, world: WorldState) -> ActionResult:
     agent = world.agents[agent_id]
     old_location = agent.location
 
@@ -802,9 +816,7 @@ def _resolve_send_message(
     else:
         detail = f"Sent message to {action.target}"
 
-    return ActionResult(
-        agent_id=agent_id, action=action, success=True, detail=detail
-    )
+    return ActionResult(agent_id=agent_id, action=action, success=True, detail=detail)
 
 
 def _resolve_update_will(
@@ -843,9 +855,7 @@ def _resolve_inspect(
         f"Inspected {action.target_agent}: "
         f"credits={target.credits}, inventory=[{inventory_summary}], age={target.age}"
     )
-    return ActionResult(
-        agent_id=agent_id, action=action, success=True, detail=detail
-    )
+    return ActionResult(agent_id=agent_id, action=action, success=True, detail=detail)
 
 
 def _resolve_npc_sells(world: WorldState) -> None:
@@ -903,4 +913,5 @@ def _resolve_npc_sells(world: WorldState) -> None:
 
         # Cancel the order (it's been processed)
         from evomarket.engine.trading import OrderStatus as OS
+
         order.status = OS.FILLED

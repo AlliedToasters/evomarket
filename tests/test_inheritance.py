@@ -8,12 +8,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from evomarket.core.agent import Agent
 from evomarket.core.types import CommodityType, Millicredits
 from evomarket.core.world import WorldConfig, WorldState, generate_world
 from evomarket.engine.inheritance import (
-    DeathResult,
-    WillTransfer,
     get_will,
     resolve_death,
     resolve_deaths,
@@ -332,7 +329,9 @@ class TestUnclaimedDistribution:
         def mock_clear(w: WorldState, aid: str) -> None:
             clear_called.append(aid)
 
-        resolve_death(world, a, cancel_orders_fn=mock_cancel, clear_messages_fn=mock_clear)
+        resolve_death(
+            world, a, cancel_orders_fn=mock_cancel, clear_messages_fn=mock_clear
+        )
 
         assert cancel_called == [a]
         assert clear_called == [a]
@@ -369,7 +368,10 @@ class TestBatchDeaths:
 
         # b should have received a's estate then died,
         # so c should have received b's estate (b_credits + a_credits)
-        assert world.agents[c].credits == world.config.starting_credits + a_credits + b_credits
+        assert (
+            world.agents[c].credits
+            == world.config.starting_credits + a_credits + b_credits
+        )
         assert not world.agents[a].alive
         assert not world.agents[b].alive
         world.verify_invariant()
@@ -379,7 +381,7 @@ class TestBatchDeaths:
         and marked dead, so agent_002's will to agent_001 is unclaimed."""
         world = _make_world(num_agents=4)
         ids = _agent_ids(world)
-        a, b, c, d = ids[0], ids[1], ids[2], ids[3]
+        a, b, _c, _d = ids[0], ids[1], ids[2], ids[3]
 
         # b wills to a (who will already be dead when b is processed)
         update_will(world, b, {a: 1.0})
@@ -388,7 +390,9 @@ class TestBatchDeaths:
 
         # a processed first, marked dead. b processed next, a is dead → unclaimed.
         b_result = results[1]
-        a_transfer = next(t for t in b_result.will_distributions if t.beneficiary_id == a)
+        a_transfer = next(
+            t for t in b_result.will_distributions if t.beneficiary_id == a
+        )
         assert not a_transfer.alive
         assert b_result.unclaimed_credits == b_result.total_estate_credits
         world.verify_invariant()
@@ -402,7 +406,7 @@ class TestBatchDeaths:
         total_credits = sum(world.agents[aid].credits for aid in ids)
         before_treasury = world.treasury
 
-        results = resolve_deaths(world, ids)
+        resolve_deaths(world, ids)
 
         # All dead
         for aid in ids:

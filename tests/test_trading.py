@@ -6,12 +6,11 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from evomarket.core.types import CommodityType, Millicredits
+from evomarket.core.types import CommodityType
 from evomarket.core.world import WorldConfig, WorldState, generate_world
 from evomarket.engine.trading import (
     BuySell,
     OrderStatus,
-    TradeProposal,
     TradeStatus,
     accept_order,
     accept_trade,
@@ -47,9 +46,7 @@ def world() -> WorldState:
     w = generate_world(config, seed=42)
 
     # Move both agents to the same trade hub and give them inventory
-    hub_id = next(
-        nid for nid, n in w.nodes.items() if n.node_type.value == "TRADE_HUB"
-    )
+    hub_id = next(nid for nid, n in w.nodes.items() if n.node_type.value == "TRADE_HUB")
     for agent in w.agents.values():
         agent.location = hub_id
         agent.inventory[CommodityType.IRON] = 10
@@ -263,9 +260,7 @@ class TestAcceptOrder:
         assert order is not None
 
         # Move acceptor to a different node
-        other_node = next(
-            nid for nid in world.nodes if nid != _hub_id(world)
-        )
+        other_node = next(nid for nid in world.nodes if nid != _hub_id(world))
         world.agents[a2].location = other_node
 
         result = accept_order(world, a2, order.order_id)
@@ -337,8 +332,22 @@ class TestSuspendReactivate:
     def test_orders_suspend_on_departure(self, world: WorldState) -> None:
         a1, _ = _agent_ids(world)
         hub = _hub_id(world)
-        o1 = post_order(world, a1, side=BuySell.SELL, commodity=CommodityType.IRON, quantity=1, price_per_unit=1000)
-        o2 = post_order(world, a1, side=BuySell.BUY, commodity=CommodityType.WOOD, quantity=1, price_per_unit=1000)
+        o1 = post_order(
+            world,
+            a1,
+            side=BuySell.SELL,
+            commodity=CommodityType.IRON,
+            quantity=1,
+            price_per_unit=1000,
+        )
+        o2 = post_order(
+            world,
+            a1,
+            side=BuySell.BUY,
+            commodity=CommodityType.WOOD,
+            quantity=1,
+            price_per_unit=1000,
+        )
         assert o1 is not None and o2 is not None
 
         suspend_orders_for_agent(world, a1, hub)
@@ -348,7 +357,14 @@ class TestSuspendReactivate:
     def test_orders_reactivate_on_arrival(self, world: WorldState) -> None:
         a1, _ = _agent_ids(world)
         hub = _hub_id(world)
-        o1 = post_order(world, a1, side=BuySell.SELL, commodity=CommodityType.IRON, quantity=1, price_per_unit=1000)
+        o1 = post_order(
+            world,
+            a1,
+            side=BuySell.SELL,
+            commodity=CommodityType.IRON,
+            quantity=1,
+            price_per_unit=1000,
+        )
         assert o1 is not None
 
         suspend_orders_for_agent(world, a1, hub)
@@ -518,7 +534,9 @@ class TestAcceptTrade:
         )
         assert proposal is not None
 
-        result = accept_trade(world, a1, proposal.trade_id)  # proposer trying to accept own
+        result = accept_trade(
+            world, a1, proposal.trade_id
+        )  # proposer trying to accept own
         assert result.success is False
         assert result.failure_reason == "agent is not the target"
 
@@ -654,8 +672,12 @@ class TestSettlement:
         a2_iron = world.agents[a2].inventory[CommodityType.IRON]
 
         order = post_order(
-            world, a1, side=BuySell.SELL, commodity=CommodityType.IRON,
-            quantity=3, price_per_unit=5000,
+            world,
+            a1,
+            side=BuySell.SELL,
+            commodity=CommodityType.IRON,
+            quantity=3,
+            price_per_unit=5000,
         )
         assert order is not None
         result = accept_order(world, a2, order.order_id)
@@ -674,7 +696,9 @@ class TestSettlement:
         a2_credits = world.agents[a2].credits
 
         proposal = propose_trade(
-            world, a1, a2,
+            world,
+            a1,
+            a2,
             offer_commodities={CommodityType.IRON: 2},
             offer_credits=3000,
             request_commodities={CommodityType.WOOD: 4},
@@ -702,8 +726,12 @@ class TestTradeHistory:
         # Execute 3 trades
         for _ in range(3):
             order = post_order(
-                world, a1, side=BuySell.SELL, commodity=CommodityType.IRON,
-                quantity=1, price_per_unit=1000,
+                world,
+                a1,
+                side=BuySell.SELL,
+                commodity=CommodityType.IRON,
+                quantity=1,
+                price_per_unit=1000,
             )
             assert order is not None
             result = accept_order(world, a2, order.order_id)
@@ -718,8 +746,12 @@ class TestTradeHistory:
 
         for _ in range(10):
             order = post_order(
-                world, a1, side=BuySell.SELL, commodity=CommodityType.IRON,
-                quantity=1, price_per_unit=1000,
+                world,
+                a1,
+                side=BuySell.SELL,
+                commodity=CommodityType.IRON,
+                quantity=1,
+                price_per_unit=1000,
             )
             assert order is not None
             accept_order(world, a2, order.order_id)
@@ -734,15 +766,19 @@ class TestTradeHistory:
         for i in range(3):
             world.tick = i * 10
             order = post_order(
-                world, a1, side=BuySell.SELL, commodity=CommodityType.IRON,
-                quantity=1, price_per_unit=1000,
+                world,
+                a1,
+                side=BuySell.SELL,
+                commodity=CommodityType.IRON,
+                quantity=1,
+                price_per_unit=1000,
             )
             assert order is not None
             accept_order(world, a2, order.order_id)
 
         history = get_trade_history(world, hub)
         assert history[0].tick == 20  # most recent
-        assert history[2].tick == 0   # oldest
+        assert history[2].tick == 0  # oldest
 
 
 # ---------------------------------------------------------------------------
@@ -753,14 +789,18 @@ class TestTradeHistory:
 class TestDeathCleanup:
     def test_dead_agent_orders_cancelled(self, world: WorldState) -> None:
         a1, _ = _agent_ids(world)
-        hub = _hub_id(world)
+        _hub_id(world)
 
         # Post 3 active orders + suspend 1
         orders = []
         for _ in range(4):
             o = post_order(
-                world, a1, side=BuySell.SELL, commodity=CommodityType.IRON,
-                quantity=1, price_per_unit=1000,
+                world,
+                a1,
+                side=BuySell.SELL,
+                commodity=CommodityType.IRON,
+                quantity=1,
+                price_per_unit=1000,
             )
             assert o is not None
             orders.append(o)
@@ -800,7 +840,9 @@ side_st = st.sampled_from([BuySell.BUY, BuySell.SELL])
 @st.composite
 def trade_action(draw: st.DrawFn) -> tuple[str, dict]:
     """Generate a random trading action."""
-    action = draw(st.sampled_from(["post", "accept", "cancel", "propose", "accept_p2p"]))
+    action = draw(
+        st.sampled_from(["post", "accept", "cancel", "propose", "accept_p2p"])
+    )
     commodity = draw(commodity_st)
     quantity = draw(st.integers(min_value=1, max_value=5))
     price = draw(st.integers(min_value=100, max_value=10000))
@@ -828,7 +870,9 @@ def test_random_operations_preserve_invariant(
     a1, a2 = ids[0], ids[1]
 
     # Put agents together at a hub with inventory
-    hub = next(nid for nid, n in world.nodes.items() if n.node_type.value == "TRADE_HUB")
+    hub = next(
+        nid for nid, n in world.nodes.items() if n.node_type.value == "TRADE_HUB"
+    )
     for agent in world.agents.values():
         agent.location = hub
         agent.inventory[CommodityType.IRON] = 50
@@ -837,7 +881,8 @@ def test_random_operations_preserve_invariant(
     for action_type, params in actions:
         if action_type == "post":
             post_order(
-                world, a1,
+                world,
+                a1,
                 side=BuySell.SELL,
                 commodity=params["commodity"],
                 quantity=params["quantity"],
@@ -846,14 +891,16 @@ def test_random_operations_preserve_invariant(
         elif action_type == "accept":
             # Try to accept first active order
             active = [
-                o for o in world.order_book.values()
+                o
+                for o in world.order_book.values()
                 if getattr(o, "status", None) == OrderStatus.ACTIVE
             ]
             if active:
                 accept_order(world, a2, active[0].order_id)
         elif action_type == "cancel":
             agent_orders = [
-                o for o in world.order_book.values()
+                o
+                for o in world.order_book.values()
                 if getattr(o, "poster_id", None) == a1
                 and getattr(o, "status", None) == OrderStatus.ACTIVE
             ]
@@ -861,13 +908,16 @@ def test_random_operations_preserve_invariant(
                 cancel_order(world, a1, agent_orders[0].order_id)
         elif action_type == "propose":
             propose_trade(
-                world, a1, a2,
+                world,
+                a1,
+                a2,
                 offer_commodities={params["commodity"]: params["quantity"]},
                 request_credits=params["price"],
             )
         elif action_type == "accept_p2p":
             pending = [
-                p for p in world.trade_proposals.values()
+                p
+                for p in world.trade_proposals.values()
                 if getattr(p, "status", None) == TradeStatus.PENDING
                 and getattr(p, "target_id", None) == a2
             ]
@@ -889,19 +939,29 @@ class TestSerialization:
 
         # Create some orders
         post_order(
-            world, a1, side=BuySell.SELL, commodity=CommodityType.IRON,
-            quantity=3, price_per_unit=5000,
+            world,
+            a1,
+            side=BuySell.SELL,
+            commodity=CommodityType.IRON,
+            quantity=3,
+            price_per_unit=5000,
         )
         propose_trade(
-            world, a1, a2,
+            world,
+            a1,
+            a2,
             offer_commodities={CommodityType.IRON: 1},
             request_credits=2000,
         )
 
         # Execute a trade for history
         order = post_order(
-            world, a1, side=BuySell.SELL, commodity=CommodityType.IRON,
-            quantity=1, price_per_unit=1000,
+            world,
+            a1,
+            side=BuySell.SELL,
+            commodity=CommodityType.IRON,
+            quantity=1,
+            price_per_unit=1000,
         )
         assert order is not None
         accept_order(world, a2, order.order_id)
