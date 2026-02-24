@@ -54,6 +54,7 @@ class TestEventLoggerCreation:
             "deaths",
             "messages",
             "agent_snapshots",
+            "npc_snapshots",
         }
         assert expected.issubset(tables)
         conn.close()

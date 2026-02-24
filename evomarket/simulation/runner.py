@@ -225,6 +225,7 @@ def run_episode(
         event_logger.log_deaths(tick_num, tick_result.death_results)
         event_logger.log_messages(tick_num, tick_result.action_results)
         event_logger.log_agent_snapshots(tick_num, world)
+        event_logger.log_npc_snapshots(tick_num, world)
         event_logger.flush_tick()
 
         # Checkpoint
@@ -412,6 +413,7 @@ def resume_from_checkpoint(
         event_logger.log_deaths(tick_num, tick_result.death_results)
         event_logger.log_messages(tick_num, tick_result.action_results)
         event_logger.log_agent_snapshots(tick_num, world)
+        event_logger.log_npc_snapshots(tick_num, world)
         event_logger.flush_tick()
 
         if (
