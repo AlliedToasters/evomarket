@@ -50,10 +50,10 @@ The system SHALL provide a `transfer_credits(from_id, to_id, amount)` method on 
 - **THEN** no balances change and no error is raised
 
 ### Requirement: Supply-responsive NPC pricing
-The system SHALL provide a `get_npc_price(node_id, commodity)` method on `WorldState` that returns the current NPC buy price in millicredits as an `int`, using the formula: `base_price * (capacity - stockpile) // capacity` (integer floor division). This ensures no fractional millicredits are produced.
+The system SHALL provide a `get_npc_price(node_id, commodity, exclude_agent_id=None)` method on `WorldState` that returns the current NPC buy price in millicredits as an `int`, using the formula: `base_price * max(0, capacity - stockpile - local_agent_supply) // capacity` (integer floor division). `local_agent_supply` is the total units of that commodity held by all living agents at the node, optionally excluding the agent identified by `exclude_agent_id`. This ensures no fractional millicredits are produced, and prices drop when agents bring excess supply to a hub.
 
-#### Scenario: Price at zero stockpile
-- **WHEN** `get_npc_price(node_id, commodity)` is called and the NPC stockpile for that commodity is 0
+#### Scenario: Price at zero stockpile, no agents
+- **WHEN** `get_npc_price(node_id, commodity)` is called, the NPC stockpile for that commodity is 0, and no agents with that commodity are at the node
 - **THEN** the returned price equals `npc_base_prices[commodity]` in millicredits (full price)
 
 #### Scenario: Price at full stockpile
@@ -61,12 +61,20 @@ The system SHALL provide a `get_npc_price(node_id, commodity)` method on `WorldS
 - **THEN** the returned price equals 0
 
 #### Scenario: Price at half stockpile
-- **WHEN** `get_npc_price(node_id, commodity)` is called and the NPC stockpile is exactly half of capacity
+- **WHEN** `get_npc_price(node_id, commodity)` is called, the NPC stockpile is exactly half of capacity, and no agents with that commodity are at the node
 - **THEN** the returned price equals `base_price // 2` in millicredits (floor division)
 
 #### Scenario: Commodity not bought at node
 - **WHEN** `get_npc_price(node_id, commodity)` is called for a commodity not in the node's `npc_buys` list
 - **THEN** the returned price equals 0 (NPC does not buy this commodity here)
+
+#### Scenario: Price depressed by local agent supply
+- **WHEN** `get_npc_price(node_id, commodity)` is called, the NPC stockpile is 0, capacity is 50, and agents at the node hold a total of 30 units of that commodity
+- **THEN** the returned price equals `base_price * max(0, 50 - 0 - 30) // 50 = base_price * 20 // 50`
+
+#### Scenario: Exclude agent during sell
+- **WHEN** `get_npc_price(node_id, commodity, exclude_agent_id=agent_id)` is called and the specified agent holds inventory of that commodity at the node
+- **THEN** the excluded agent's inventory is not counted in `local_agent_supply`, yielding a higher price than without exclusion
 
 ### Requirement: Treasury model
 The `WorldState` SHALL hold a `treasury: int` representing unclaimed millicredits. The treasury is initialized during world generation with `total_credit_supply` minus all millicredits allocated to agents and NPC budgets.

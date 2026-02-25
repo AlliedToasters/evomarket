@@ -154,6 +154,46 @@ class TestNpcPricing:
                     return
         pytest.skip("All commodities bought at all nodes")
 
+    def test_price_depressed_by_agent_supply(self, world: WorldState) -> None:
+        nid, commodity = self._get_npc_node(world)
+        node = world.nodes[nid]
+        node.npc_stockpile[commodity] = 0
+
+        # Price with no agents at the node
+        price_empty = world.get_npc_price(nid, commodity)
+        assert price_empty == node.npc_base_prices[commodity]
+
+        # Place an agent at the node with inventory
+        agent = next(iter(world.agents.values()))
+        agent.location = nid
+        agent.inventory[commodity] = 30
+
+        price_crowded = world.get_npc_price(nid, commodity)
+        assert price_crowded < price_empty
+
+        # Verify the formula: base * max(0, cap - 0 - 30) // cap
+        cap = node.npc_stockpile_capacity
+        expected = node.npc_base_prices[commodity] * max(0, cap - 30) // cap
+        assert price_crowded == expected
+
+    def test_price_with_exclude_agent(self, world: WorldState) -> None:
+        nid, commodity = self._get_npc_node(world)
+        node = world.nodes[nid]
+        node.npc_stockpile[commodity] = 0
+
+        agent = next(iter(world.agents.values()))
+        agent.location = nid
+        agent.inventory[commodity] = 20
+
+        price_included = world.get_npc_price(nid, commodity)
+        price_excluded = world.get_npc_price(
+            nid, commodity, exclude_agent_id=agent.agent_id
+        )
+        # Excluding the agent should give a higher price
+        assert price_excluded > price_included
+        # Excluded price should equal the no-agent price
+        assert price_excluded == node.npc_base_prices[commodity]
+
 
 class TestTreasury:
     def test_treasury_initialized_correctly(self) -> None:

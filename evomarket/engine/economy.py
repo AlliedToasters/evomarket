@@ -67,7 +67,9 @@ def process_npc_sell(
     total_paid: Millicredits = 0
 
     for _ in range(units_to_sell):
-        price = world.get_npc_price(agent.location, commodity)
+        price = world.get_npc_price(
+            agent.location, commodity, exclude_agent_id=agent_id
+        )
         if price == 0:
             break
         # Check if NPC budget can cover this unit
@@ -93,7 +95,9 @@ def process_npc_sell(
 
 
 def get_npc_prices(
-    world: WorldState, node_id: str
+    world: WorldState,
+    node_id: str,
+    exclude_agent_id: str | None = None,
 ) -> dict[CommodityType, Millicredits]:
     """Return current NPC buy prices for all commodities at a node.
 
@@ -101,7 +105,9 @@ def get_npc_prices(
     """
     node = world.nodes[node_id]
     return {
-        commodity: world.get_npc_price(node_id, commodity)
+        commodity: world.get_npc_price(
+            node_id, commodity, exclude_agent_id=exclude_agent_id
+        )
         for commodity in node.npc_buys
     }
 
