@@ -8,11 +8,11 @@ The system SHALL provide a `render_prompt(observation, scratchpad, agent_id)` fu
 - **THEN** the returned string contains a preamble section, a scratchpad section, and a world state section in that order
 
 ### Requirement: Preamble is a compressed reference card
-The preamble section SHALL contain compressed game rules and an action reference in a compact format optimized for token efficiency. It SHALL NOT be a verbose tutorial.
+The preamble section SHALL contain compressed game rules and an action reference in a compact format optimized for token efficiency. It SHALL NOT be a verbose tutorial. Action filtering uses pre-computed `ActionAvailability` from the observation layer (see `observation.py`), so the renderer formats pre-computed data rather than re-deriving predicates.
 
 #### Scenario: Preamble includes action reference
 - **WHEN** a prompt is rendered
-- **THEN** the preamble lists all valid action types with their argument formats
+- **THEN** the preamble lists valid action types (filtered by `ActionAvailability`) with their argument formats
 
 #### Scenario: Preamble includes core game rules
 - **WHEN** a prompt is rendered

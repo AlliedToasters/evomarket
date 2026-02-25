@@ -6,8 +6,9 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from evomarket.core.types import CommodityType, Millicredits
+from evomarket.core.types import CommodityType, Millicredits, NodeType
 from evomarket.engine.trading import (
+    BuySell,
     TradeStatus,
 )
 
@@ -94,6 +95,46 @@ class TradeProposalView:
 
 
 @dataclass(frozen=True)
+class SellableItem:
+    """A commodity the agent can sell to an NPC at the current node."""
+
+    commodity: CommodityType
+    quantity_held: int
+    npc_price: Millicredits
+
+
+@dataclass(frozen=True)
+class FillableOrder:
+    """An order at the current node the agent can fill."""
+
+    order_id: str
+    poster_id: str
+    side: str
+    commodity: CommodityType
+    quantity: int
+    price_per_unit: Millicredits
+
+
+@dataclass(frozen=True)
+class ActionAvailability:
+    """Pre-computed action availability for an agent."""
+
+    can_move: bool
+    adjacent_nodes: list[str]
+    can_harvest: bool
+    harvestable_resources: dict[CommodityType, int]
+    can_sell_to_npc: bool
+    sellable_items: list[SellableItem]
+    can_buy_from_npc: bool
+    can_post_order: bool
+    fillable_orders: list[FillableOrder]
+    can_propose_trade: bool
+    tradeable_agents: list[str]
+    acceptable_trades: list[str]
+    can_inspect: bool
+
+
+@dataclass(frozen=True)
 class AgentObservation:
     """Complete observation for a single agent at a point in time."""
 
@@ -108,6 +149,149 @@ class AgentObservation:
     own_orders: list[OrderView]
     own_pending_proposals: list[TradeProposalView]
     own_will: dict[str, float]
+    action_availability: ActionAvailability | None = None
+
+
+# ---------------------------------------------------------------------------
+# Action availability computation
+# ---------------------------------------------------------------------------
+
+
+def _compute_action_availability(
+    agent_id: str,
+    world: WorldState,
+) -> ActionAvailability:
+    """Compute which actions are available to an agent.
+
+    Predicates mirror the canonical validators in engine/actions.py.
+    """
+    agent = world.agents[agent_id]
+    node = world.nodes[agent.location]
+    inv = {c: q for c, q in agent.inventory.items() if q > 0}
+
+    # Move: adjacent nodes exist
+    adjacent_nodes = list(node.adjacent_nodes)
+    can_move = len(adjacent_nodes) > 0
+
+    # Harvest: RESOURCE node with floor(stockpile) >= 1
+    harvestable_resources: dict[CommodityType, int] = {}
+    if node.node_type == NodeType.RESOURCE:
+        for commodity, stockpile in node.resource_stockpile.items():
+            floored = math.floor(stockpile)
+            if floored >= 1:
+                harvestable_resources[commodity] = floored
+    can_harvest = bool(harvestable_resources)
+
+    # NPC sell: agent has inventory matching node's npc_buys
+    sellable_items: list[SellableItem] = []
+    if inv and node.npc_buys:
+        for commodity, qty in inv.items():
+            if commodity in node.npc_buys:
+                npc_price = world.get_npc_price(node.node_id, commodity)
+                sellable_items.append(
+                    SellableItem(
+                        commodity=commodity,
+                        quantity_held=qty,
+                        npc_price=npc_price,
+                    )
+                )
+    can_sell_to_npc = bool(sellable_items)
+
+    # NPC buy: agent has credits and node has npc_buys
+    can_buy_from_npc = bool(node.npc_buys and agent.credits > 0)
+
+    # Post order: under max_open_orders limit
+    agent_order_count = len(world.orders_for_agent(agent_id))
+    can_post_order = agent_order_count < world.config.max_open_orders
+
+    # Fillable orders: orders at node the agent can fill, excluding own
+    fillable_orders: list[FillableOrder] = []
+    for order in world.orders_at_node(node.node_id):
+        poster_id = getattr(order, "poster_id", None)
+        if poster_id == agent_id:
+            continue
+        side = getattr(order, "side", None)
+        commodity = getattr(order, "commodity", None)
+        quantity = getattr(order, "quantity", 0)
+        price_per_unit = getattr(order, "price_per_unit", 0)
+
+        if side == BuySell.SELL:
+            # Agent needs credits to buy
+            cost = price_per_unit * quantity
+            if agent.credits >= cost:
+                fillable_orders.append(
+                    FillableOrder(
+                        order_id=getattr(order, "order_id", ""),
+                        poster_id=poster_id,
+                        side="sell",
+                        commodity=commodity,
+                        quantity=quantity,
+                        price_per_unit=price_per_unit,
+                    )
+                )
+        elif side == BuySell.BUY:
+            # Agent needs inventory to sell
+            agent_qty = inv.get(commodity, 0)
+            if agent_qty >= quantity:
+                fillable_orders.append(
+                    FillableOrder(
+                        order_id=getattr(order, "order_id", ""),
+                        poster_id=poster_id,
+                        side="buy",
+                        commodity=commodity,
+                        quantity=quantity,
+                        price_per_unit=price_per_unit,
+                    )
+                )
+
+    # Propose trade: other agents present AND under max_pending_trades
+    other_agents = [
+        a for a in world.agents_at_node(node.node_id) if a.agent_id != agent_id
+    ]
+    tradeable_agents = [a.agent_id for a in other_agents]
+    trade_count = len(world.pending_proposals_for_agent(agent_id))
+    can_propose_trade = (
+        bool(tradeable_agents) and trade_count < world.config.max_pending_trades
+    )
+
+    # Acceptable trades: pending proposals where agent has requested items
+    acceptable_trades: list[str] = []
+    for proposal in world.trade_proposals.values():
+        if getattr(proposal, "target_id", None) != agent_id:
+            continue
+        if getattr(proposal, "status", None) != TradeStatus.PENDING:
+            continue
+        request_commodities = getattr(proposal, "request_commodities", {})
+        request_credits = getattr(proposal, "request_credits", 0)
+        can_accept = True
+        if request_credits > 0 and agent.credits < request_credits:
+            can_accept = False
+        if can_accept:
+            for commodity, qty in request_commodities.items():
+                if agent.inventory.get(commodity, 0) < qty:
+                    can_accept = False
+                    break
+        if can_accept:
+            acceptable_trades.append(getattr(proposal, "trade_id", ""))
+
+    # Inspect: other agents present
+    can_inspect = bool(tradeable_agents)
+
+    return ActionAvailability(
+        can_move=can_move,
+        adjacent_nodes=adjacent_nodes,
+        can_harvest=can_harvest,
+        harvestable_resources=harvestable_resources,
+        can_sell_to_npc=can_sell_to_npc,
+        sellable_items=sellable_items,
+        can_buy_from_npc=can_buy_from_npc,
+        can_post_order=can_post_order,
+        fillable_orders=fillable_orders,
+        can_propose_trade=can_propose_trade,
+        tradeable_agents=tradeable_agents,
+        acceptable_trades=acceptable_trades,
+        can_inspect=can_inspect,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +385,8 @@ def generate_observations(world: WorldState) -> dict[str, AgentObservation]:
             and getattr(p, "status", None) == TradeStatus.PENDING
         ]
 
+        action_availability = _compute_action_availability(agent_id, world)
+
         observations[agent_id] = AgentObservation(
             preamble=preamble,
             prompt_document=agent.prompt_document,
@@ -213,6 +399,7 @@ def generate_observations(world: WorldState) -> dict[str, AgentObservation]:
             own_orders=own_orders,
             own_pending_proposals=own_pending_proposals,
             own_will=dict(agent.will),
+            action_availability=action_availability,
         )
 
     return observations

@@ -214,3 +214,295 @@ class TestObservationGeneration:
         world.agents[first_id].prompt_document = "my notes"
         obs = generate_observations(world)
         assert obs[first_id].prompt_document == "my notes"
+
+    def test_action_availability_present(self) -> None:
+        world = _make_world()
+        obs = generate_observations(world)
+        for observation in obs.values():
+            assert observation.action_availability is not None
+
+
+class TestActionAvailability:
+    """Tests for ActionAvailability computation."""
+
+    def test_harvest_available_at_resource_node_with_stock(self) -> None:
+        world = _make_world()
+        resource_node_id = None
+        for nid, node in world.nodes.items():
+            if node.node_type == NodeType.RESOURCE:
+                resource_node_id = nid
+                break
+        assert resource_node_id is not None
+
+        node = world.nodes[resource_node_id]
+        commodity = list(node.resource_stockpile.keys())[0]
+        node.resource_stockpile[commodity] = 3.7
+
+        first_id = next(iter(world.agents))
+        world.agents[first_id].location = resource_node_id
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_harvest is True
+        assert commodity in avail.harvestable_resources
+        assert avail.harvestable_resources[commodity] == 3
+
+    def test_harvest_unavailable_below_threshold(self) -> None:
+        world = _make_world()
+        resource_node_id = None
+        for nid, node in world.nodes.items():
+            if node.node_type == NodeType.RESOURCE:
+                resource_node_id = nid
+                break
+        assert resource_node_id is not None
+
+        node = world.nodes[resource_node_id]
+        for c in node.resource_stockpile:
+            node.resource_stockpile[c] = 0.5  # below floor threshold
+
+        first_id = next(iter(world.agents))
+        world.agents[first_id].location = resource_node_id
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_harvest is False
+        assert avail.harvestable_resources == {}
+
+    def test_harvest_unavailable_at_trade_hub(self) -> None:
+        world = _make_world()
+        hub_id = None
+        for nid, node in world.nodes.items():
+            if node.node_type == NodeType.TRADE_HUB:
+                hub_id = nid
+                break
+        assert hub_id is not None
+
+        first_id = next(iter(world.agents))
+        world.agents[first_id].location = hub_id
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_harvest is False
+
+    def test_post_order_gated_by_max_open_orders(self) -> None:
+        world = _make_world()
+        first_id = next(iter(world.agents))
+        agent = world.agents[first_id]
+        commodity = list(agent.inventory.keys())[0]
+        agent.inventory[commodity] = 100
+
+        # Post max_open_orders orders
+        for i in range(world.config.max_open_orders):
+            order = post_order(
+                world,
+                first_id,
+                side=BuySell.SELL,
+                commodity=commodity,
+                quantity=1,
+                price_per_unit=1000,
+            )
+            assert order is not None
+
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_post_order is False
+
+    def test_post_order_available_under_limit(self) -> None:
+        world = _make_world()
+        first_id = next(iter(world.agents))
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_post_order is True
+
+    def test_propose_trade_gated_by_max_pending_trades(self) -> None:
+        world = _make_world()
+        ids = list(world.agents.keys())
+        node_id = world.agents[ids[0]].location
+        # Put multiple agents at same node
+        for i in range(1, min(5, len(ids))):
+            world.agents[ids[i]].location = node_id
+
+        # Give proposer inventory
+        commodity = list(world.agents[ids[0]].inventory.keys())[0]
+        world.agents[ids[0]].inventory[commodity] = 100
+
+        # Propose max_pending_trades trades
+        targets = ids[1:]
+        for i in range(world.config.max_pending_trades):
+            target = targets[i % len(targets)]
+            proposal = propose_trade(
+                world,
+                ids[0],
+                target,
+                offer_commodities={commodity: 1},
+            )
+            assert proposal is not None
+
+        obs = generate_observations(world)
+        avail = obs[ids[0]].action_availability
+        assert avail is not None
+        assert avail.can_propose_trade is False
+
+    def test_propose_trade_requires_agents_present(self) -> None:
+        world = _make_world()
+        # Find an agent alone at a node
+        first_id = next(iter(world.agents))
+        agent = world.agents[first_id]
+        # Move everyone else away
+        other_node = [
+            nid for nid in world.nodes if nid != agent.location
+        ][0]
+        for aid, a in world.agents.items():
+            if aid != first_id:
+                a.location = other_node
+
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_propose_trade is False
+        assert avail.tradeable_agents == []
+
+    def test_fillable_orders_excludes_own_orders(self) -> None:
+        world = _make_world()
+        ids = list(world.agents.keys())
+        node_id = world.agents[ids[0]].location
+        world.agents[ids[1]].location = node_id
+
+        commodity = list(world.agents[ids[0]].inventory.keys())[0]
+        world.agents[ids[0]].inventory[commodity] = 10
+
+        # Post agent's own sell order
+        order = post_order(
+            world,
+            ids[0],
+            side=BuySell.SELL,
+            commodity=commodity,
+            quantity=2,
+            price_per_unit=1000,
+        )
+        assert order is not None
+
+        obs = generate_observations(world)
+        avail = obs[ids[0]].action_availability
+        assert avail is not None
+        # Own order should not appear in fillable_orders
+        fillable_ids = [o.order_id for o in avail.fillable_orders]
+        assert order.order_id not in fillable_ids
+
+    def test_fillable_orders_includes_affordable_orders(self) -> None:
+        world = _make_world()
+        ids = list(world.agents.keys())
+        node_id = world.agents[ids[0]].location
+        world.agents[ids[1]].location = node_id
+
+        commodity = list(world.agents[ids[1]].inventory.keys())[0]
+        world.agents[ids[1]].inventory[commodity] = 10
+
+        # ids[1] posts a sell order
+        order = post_order(
+            world,
+            ids[1],
+            side=BuySell.SELL,
+            commodity=commodity,
+            quantity=2,
+            price_per_unit=1000,
+        )
+        assert order is not None
+
+        # ids[0] has enough credits to fill it
+        assert world.agents[ids[0]].credits >= 2 * 1000
+
+        obs = generate_observations(world)
+        avail = obs[ids[0]].action_availability
+        assert avail is not None
+        fillable_ids = [o.order_id for o in avail.fillable_orders]
+        assert order.order_id in fillable_ids
+
+    def test_acceptable_trades_checks_resources(self) -> None:
+        world = _make_world()
+        ids = list(world.agents.keys())
+        node_id = world.agents[ids[0]].location
+        world.agents[ids[1]].location = node_id
+
+        commodity = list(world.agents[ids[0]].inventory.keys())[0]
+        world.agents[ids[0]].inventory[commodity] = 5
+
+        # Propose trade requesting credits from ids[1]
+        proposal = propose_trade(
+            world,
+            ids[0],
+            ids[1],
+            offer_commodities={commodity: 1},
+            request_credits=1000,
+        )
+        assert proposal is not None
+
+        # ids[1] should be able to accept (has 30000 credits)
+        obs = generate_observations(world)
+        avail = obs[ids[1]].action_availability
+        assert avail is not None
+        assert proposal.trade_id in avail.acceptable_trades
+
+    def test_acceptable_trades_rejects_unaffordable(self) -> None:
+        world = _make_world()
+        ids = list(world.agents.keys())
+        node_id = world.agents[ids[0]].location
+        world.agents[ids[1]].location = node_id
+
+        commodity = list(world.agents[ids[0]].inventory.keys())[0]
+        world.agents[ids[0]].inventory[commodity] = 5
+
+        # Propose trade requesting commodity from ids[1] that they don't have
+        other_commodity = [c for c in world.agents[ids[1]].inventory.keys()][0]
+        world.agents[ids[1]].inventory[other_commodity] = 0
+
+        proposal = propose_trade(
+            world,
+            ids[0],
+            ids[1],
+            offer_commodities={commodity: 1},
+            request_commodities={other_commodity: 5},
+        )
+        assert proposal is not None
+
+        obs = generate_observations(world)
+        avail = obs[ids[1]].action_availability
+        assert avail is not None
+        assert proposal.trade_id not in avail.acceptable_trades
+
+    def test_can_move_with_adjacent_nodes(self) -> None:
+        world = _make_world()
+        first_id = next(iter(world.agents))
+        agent = world.agents[first_id]
+        node = world.nodes[agent.location]
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_move == (len(node.adjacent_nodes) > 0)
+        assert set(avail.adjacent_nodes) == set(node.adjacent_nodes)
+
+    def test_npc_sell_availability(self) -> None:
+        world = _make_world()
+        # Find a node with npc_buys
+        npc_node_id = None
+        for nid, node in world.nodes.items():
+            if node.npc_buys:
+                npc_node_id = nid
+                break
+        assert npc_node_id is not None
+
+        first_id = next(iter(world.agents))
+        world.agents[first_id].location = npc_node_id
+        node = world.nodes[npc_node_id]
+        commodity = node.npc_buys[0]
+        world.agents[first_id].inventory[commodity] = 5
+
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_sell_to_npc is True
+        assert len(avail.sellable_items) >= 1
+        sellable_commodities = [s.commodity for s in avail.sellable_items]
+        assert commodity in sellable_commodities

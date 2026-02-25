@@ -37,84 +37,76 @@ REASONING: <brief explanation> (optional)"""
 
 
 def _get_valid_actions(obs: AgentObservation) -> list[str]:
-    """Build list of valid actions based on current observation context."""
-    actions: list[str] = []
-    node = obs.node_info
-    state = obs.agent_state
-    inv = {c: q for c, q in state.inventory.items() if q > 0}
+    """Build list of valid actions from pre-computed ActionAvailability."""
+    avail = obs.action_availability
+    if avail is None:
+        return ["  idle  — do nothing"]
 
-    # Move — always valid if there are adjacent nodes
-    if node.adjacent_nodes:
-        nodes = ", ".join(node.adjacent_nodes)
+    actions: list[str] = []
+
+    # Move
+    if avail.can_move:
+        nodes = ", ".join(avail.adjacent_nodes)
         actions.append(f"  move <node_id>  — move to adjacent node ({nodes})")
 
-    # Harvest — only at RESOURCE nodes with available resources
-    if node.node_type == "RESOURCE":
-        avail = {c: q for c, q in node.resource_availability.items() if q > 0}
-        if avail:
-            res = ", ".join(f"{c.value}={q}" for c, q in avail.items())
-            actions.append(f"  harvest  — gather resource (available: {res})")
-        else:
+    # Harvest
+    if avail.can_harvest:
+        res = ", ".join(
+            f"{c.value}={q}" for c, q in avail.harvestable_resources.items()
+        )
+        actions.append(f"  harvest  — gather resource (available: {res})")
+
+    # Sell to NPC
+    if avail.can_sell_to_npc:
+        for item in avail.sellable_items:
+            price = item.npc_price / MILLICREDITS_PER_CREDIT
             actions.append(
-                "  harvest  — gather resource (none available now, will respawn)"
+                f"  sell {item.commodity.value} <qty> <price>  — sell to NPC (you have {item.quantity_held}, NPC pays ~{price:.1f}cr)"
             )
-    # No harvest line at all for non-RESOURCE nodes
 
-    # Sell — only if agent has inventory and NPC buys here
-    if inv and node.npc_prices:
-        sellable = [(c, q) for c, q in inv.items() if c in node.npc_prices]
-        if sellable:
-            for c, q in sellable:
-                price = node.npc_prices[c] / MILLICREDITS_PER_CREDIT
-                actions.append(
-                    f"  sell {c.value} <qty> <price>  — sell to NPC (you have {q}, NPC pays ~{price:.1f}cr)"
-                )
-
-    # Buy — if NPC has stock and agent has credits
-    if node.npc_prices and state.credits > 0:
+    # Buy from NPC
+    if avail.can_buy_from_npc:
         actions.append("  buy <commodity> <qty> <price>  — buy from NPC")
 
-    # Post order (generic) — always available
-    actions.append(
-        "  post_order sell|buy <commodity> <qty> <price>  — post limit order"
-    )
+    # Post order
+    if avail.can_post_order:
+        actions.append(
+            "  post_order sell|buy <commodity> <qty> <price>  — post limit order"
+        )
 
-    # Accept order — only show orders the agent can actually fill
-    for o in obs.posted_orders:
+    # Accept order (fillable orders)
+    for o in avail.fillable_orders:
         if o.side == "sell":
-            # To accept a sell order, agent needs enough credits
-            cost = o.price_per_unit * o.quantity
-            if state.credits >= cost:
-                actions.append(
-                    f"  accept_order {o.order_id}  — buy {o.commodity.value} x{o.quantity} @{_mc(o.price_per_unit)}cr from {o.poster_id}"
-                )
+            actions.append(
+                f"  accept_order {o.order_id}  — buy {o.commodity.value} x{o.quantity} @{_mc(o.price_per_unit)}cr from {o.poster_id}"
+            )
         elif o.side == "buy":
-            # To accept a buy order, agent needs enough of the commodity
-            agent_qty = inv.get(o.commodity, 0)
-            if agent_qty >= o.quantity:
-                actions.append(
-                    f"  accept_order {o.order_id}  — sell {o.commodity.value} x{o.quantity} @{_mc(o.price_per_unit)}cr to {o.poster_id}"
-                )
+            actions.append(
+                f"  accept_order {o.order_id}  — sell {o.commodity.value} x{o.quantity} @{_mc(o.price_per_unit)}cr to {o.poster_id}"
+            )
 
-    # Propose trade — only if other agents are present
-    if obs.agents_present:
-        agents = ", ".join(a.agent_id for a in obs.agents_present)
+    # Propose trade
+    if avail.can_propose_trade:
+        agents = ", ".join(avail.tradeable_agents)
         actions.append(
             f"  propose_trade <agent_id> offer:<items> request:<items>  — trade with nearby agent ({agents})"
         )
 
-    # Accept trade — only if there are pending proposals
-    if obs.pending_proposals:
-        for p in obs.pending_proposals:
-            actions.append(
-                f"  accept_trade {p.trade_id}  — accept trade from {p.proposer_id}"
-            )
+    # Accept trade (only those the agent can fulfill)
+    if avail.acceptable_trades:
+        proposal_by_id = {p.trade_id: p for p in obs.pending_proposals}
+        for trade_id in avail.acceptable_trades:
+            p = proposal_by_id.get(trade_id)
+            if p:
+                actions.append(
+                    f"  accept_trade {p.trade_id}  — accept trade from {p.proposer_id}"
+                )
 
     # Communication — always available
     actions.append("  send_message <target|broadcast> <text>  — send message")
 
-    # Inspect — only if other agents are present
-    if obs.agents_present:
+    # Inspect
+    if avail.can_inspect:
         actions.append("  inspect <agent_id>  — inspect nearby agent")
 
     # Will — always available
