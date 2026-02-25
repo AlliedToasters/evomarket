@@ -25,7 +25,7 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_tick_metrics(db_path: str) -> pd.DataFrame:
     """Load per-tick metrics with JSON unpacked and credits converted."""
     conn = get_connection(db_path)
@@ -56,7 +56,7 @@ def load_tick_metrics(db_path: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_agent_snapshots(db_path: str) -> pd.DataFrame:
     """Load per-agent-per-tick snapshots with inventory unpacked and credits converted."""
     conn = get_connection(db_path)
@@ -84,7 +84,7 @@ def load_agent_snapshots(db_path: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_trades(db_path: str) -> pd.DataFrame:
     """Load all trades with credits converted to display credits."""
     conn = get_connection(db_path)
@@ -106,7 +106,7 @@ def load_trades(db_path: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_deaths(db_path: str) -> pd.DataFrame:
     """Load all deaths with estate JSON unpacked and credits converted."""
     conn = get_connection(db_path)
@@ -132,7 +132,7 @@ def load_deaths(db_path: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_actions(db_path: str) -> pd.DataFrame:
     """Load all actions."""
     conn = get_connection(db_path)
@@ -154,7 +154,7 @@ def load_actions(db_path: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_messages(db_path: str) -> pd.DataFrame:
     """Load all messages."""
     conn = get_connection(db_path)
@@ -183,7 +183,7 @@ def has_npc_snapshots(db_path: str) -> bool:
     return cursor.fetchone() is not None
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_npc_snapshots(db_path: str) -> pd.DataFrame:
     """Load per-node-per-tick NPC state with prices/budgets converted to display credits."""
     conn = get_connection(db_path)

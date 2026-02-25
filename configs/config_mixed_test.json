@@ -23,12 +23,12 @@
   "agent_mix": {
     "harvester": 1,
     "trader": 1,
-    "llm:llama8b": 3,
+    "llm:llama70b": 3,
     "llm:haiku": 3
   },
   "llm_backends": {
-    "llama8b": {
-      "model": "meta-llama/llama-3.1-8b-instruct",
+    "llama70b": {
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "base_url": "https://openrouter.ai/api/v1"
     },
     "haiku": {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -120,6 +121,13 @@ def main() -> None:
         return
 
     PANELS[selected](episode_dir)
+
+    # --- Auto-refresh for live runs ---
+    with st.sidebar:
+        auto_refresh = st.toggle("Auto-refresh (live run)", value=False)
+    if auto_refresh:
+        time.sleep(5)
+        st.rerun()
 
 
 if __name__ == "__main__":
