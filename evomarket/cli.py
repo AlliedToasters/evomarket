@@ -407,7 +407,14 @@ def _cmd_resume(args: argparse.Namespace) -> None:
         with open(args.config) as f:
             config = SimulationConfig.from_json(json.load(f))
     else:
-        config = SimulationConfig()
+        # Auto-detect config from checkpoint's output directory
+        auto_config_path = checkpoint_path.parent.parent / "config.json"
+        if auto_config_path.exists():
+            print(f"Auto-loaded config from {auto_config_path}")
+            with open(auto_config_path) as f:
+                config = SimulationConfig.from_json(json.load(f))
+        else:
+            config = SimulationConfig()
 
     output_dir = Path(args.output_dir) if args.output_dir else None
 

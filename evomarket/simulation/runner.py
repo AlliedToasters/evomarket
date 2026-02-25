@@ -419,7 +419,15 @@ def resume_from_checkpoint(
     # Reconstruct agent registry
     registry: dict[str, _AgentRecord] = {}
     for agent_id, meta in checkpoint["agent_registry"].items():
-        agent = agent_factory.create_agent(agent_id)
+        saved_type = meta.get("agent_type", "")
+        # Normalize class names to config keys (e.g. "HarvesterAgent" → "harvester")
+        if saved_type.endswith("Agent") and not saved_type.startswith("llm"):
+            saved_type = saved_type.removesuffix("Agent").lower()
+        # Use type-aware creation if factory supports it (e.g. MixedAgentFactory)
+        if hasattr(agent_factory, "create_agent_by_type") and saved_type:
+            agent = agent_factory.create_agent_by_type(agent_id, saved_type)
+        else:
+            agent = agent_factory.create_agent(agent_id)
         agent.on_spawn(agent_id, config)
         # Restore agent controller state if saved in checkpoint
         saved_agent_state = meta.get("agent_state")
@@ -443,7 +451,7 @@ def resume_from_checkpoint(
         checkpoint_dir = output_dir / "checkpoints"
         checkpoint_dir.mkdir(exist_ok=True)
 
-    db_path = output_dir / "episode_resumed.sqlite" if output_dir is not None else None
+    db_path = output_dir / "episode.sqlite" if output_dir is not None else None
     event_logger = EventLogger(db_path, enabled=enable_logging and db_path is not None)
 
     has_llm_agents = _has_llm_agents(registry)

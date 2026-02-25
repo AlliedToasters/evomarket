@@ -176,9 +176,6 @@ class MixedAgentFactory(AgentFactory):
 
     def create_agent(self, agent_id: str) -> BaseAgent:
         """Create the next agent in the round-robin sequence."""
-        from evomarket.agents.heuristic_agent import _AGENT_CLASSES
-        from evomarket.agents.random_agent import RandomAgent
-
         if self._next_index < len(self._type_sequence):
             agent_type = self._type_sequence[self._next_index]
         else:
@@ -186,6 +183,19 @@ class MixedAgentFactory(AgentFactory):
                 self._next_index % len(self._type_sequence)
             ]
         self._next_index += 1
+        return self._create_agent_of_type(agent_id, agent_type)
+
+    def create_agent_by_type(self, agent_id: str, agent_type: str) -> BaseAgent:
+        """Create an agent of an explicit type, bypassing round-robin.
+
+        Used by checkpoint resume to recreate agents with their saved type.
+        """
+        return self._create_agent_of_type(agent_id, agent_type)
+
+    def _create_agent_of_type(self, agent_id: str, agent_type: str) -> BaseAgent:
+        """Internal: instantiate an agent of the given type."""
+        from evomarket.agents.heuristic_agent import _AGENT_CLASSES
+        from evomarket.agents.random_agent import RandomAgent
 
         seed = hash((self._base_seed, agent_id)) & 0xFFFFFFFF
 
