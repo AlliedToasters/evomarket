@@ -15,7 +15,7 @@ class TestArgumentParsing:
         assert args.command == "run"
         assert args.config is None
         assert args.seed is None
-        assert args.output_dir == "results"
+        assert args.output_dir == "runs/results"
         assert args.fast is False
 
     def test_run_with_flags(self) -> None:

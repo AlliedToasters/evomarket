@@ -31,8 +31,8 @@ def _create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--output-dir",
         type=str,
-        default="results",
-        help="Output directory (default: results)",
+        default="runs/results",
+        help="Output directory (default: runs/results)",
     )
     run_parser.add_argument(
         "--fast",
