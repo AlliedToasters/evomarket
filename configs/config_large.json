@@ -1,0 +1,30 @@
+{
+  "seed": 42,
+  "num_nodes": 50,
+  "num_commodity_types": 4,
+  "total_credit_supply": 50000.0,
+  "survival_tax": 0.5,
+  "starting_credits": 50.0,
+  "npc_base_price": 5.0,
+  "npc_stockpile_capacity": 50,
+  "npc_budget_replenish_rate": 30.0,
+  "npc_stockpile_decay_rate": 0.1,
+  "treasury_min_reserve": 100.0,
+  "resource_spawn_rate": 1.0,
+  "node_resource_cap": 20,
+  "population_size": 80,
+  "spawn_grace_period": 5,
+  "max_open_orders": 10,
+  "max_pending_trades": 3,
+  "death_treasury_return_pct": 0.5,
+  "death_local_share_pct": 0.5,
+  "ticks_per_episode": 500,
+  "checkpoint_interval": 50,
+  "agent_mix": {
+    "harvester": 24,
+    "trader": 20,
+    "social": 16,
+    "hoarder": 12,
+    "explorer": 8
+  }
+}
