@@ -120,3 +120,48 @@ class TestValidation:
             agent_mix={"harvester": 10},
         )
         assert config.agent_mix == {"harvester": 10}
+
+    def test_llm_colon_valid_with_backend(self) -> None:
+        config = SimulationConfig(
+            population_size=4,
+            agent_mix={"harvester": 2, "llm:haiku": 2},
+            llm_backends={"haiku": {"model": "anthropic/claude-3.5-haiku"}},
+        )
+        assert "llm:haiku" in config.agent_mix
+
+    def test_llm_colon_missing_backend_raises(self) -> None:
+        with pytest.raises(ValueError, match="llm:grok"):
+            SimulationConfig(
+                population_size=4,
+                agent_mix={"harvester": 2, "llm:grok": 2},
+                llm_backends={},
+            )
+
+    def test_bare_llm_still_valid(self) -> None:
+        config = SimulationConfig(
+            population_size=4,
+            agent_mix={"llm": 4},
+        )
+        assert config.agent_mix == {"llm": 4}
+
+    def test_multiple_llm_backends(self) -> None:
+        config = SimulationConfig(
+            population_size=8,
+            agent_mix={"llm:haiku": 4, "llm:grok": 4},
+            llm_backends={
+                "haiku": {"model": "anthropic/claude-3.5-haiku"},
+                "grok": {"model": "x-ai/grok-3-mini-beta"},
+            },
+        )
+        assert sum(config.agent_mix.values()) == 8
+
+    def test_llm_backends_serialization_round_trip(self) -> None:
+        original = SimulationConfig(
+            population_size=4,
+            agent_mix={"harvester": 2, "llm:haiku": 2},
+            llm_backends={"haiku": {"model": "anthropic/claude-3.5-haiku"}},
+        )
+        data = original.to_json()
+        restored = SimulationConfig.from_json(data)
+        assert restored.llm_backends == original.llm_backends
+        assert restored.agent_mix == original.agent_mix

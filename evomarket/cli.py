@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 
+from evomarket.agents.base import AgentFactory
 from evomarket.core.types import to_display_credits
 from evomarket.simulation.config import SimulationConfig
 
@@ -48,9 +49,9 @@ def _create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--agent-type",
         type=str,
-        choices=["heuristic", "llm"],
-        default="heuristic",
-        help="Agent type (default: heuristic)",
+        choices=["heuristic", "llm", "mixed"],
+        default=None,
+        help="Agent type (default: auto-detect from config)",
     )
     run_parser.add_argument(
         "--model",
@@ -105,9 +106,9 @@ def _create_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument(
         "--agent-type",
         type=str,
-        choices=["heuristic", "llm"],
-        default="heuristic",
-        help="Agent type (default: heuristic)",
+        choices=["heuristic", "llm", "mixed"],
+        default=None,
+        help="Agent type (default: auto-detect from config)",
     )
     resume_parser.add_argument(
         "--model", type=str, default="qwen3:8b", help="LLM model name"
@@ -125,9 +126,68 @@ def _create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _has_llm_keys(agent_mix: dict[str, int]) -> bool:
+    """Return True if agent_mix contains any llm or llm:* keys."""
+    return any(k == "llm" or k.startswith("llm:") for k in agent_mix)
+
+
+def _detect_agent_mode(args: argparse.Namespace, agent_mix: dict[str, int]) -> str:
+    """Determine the effective agent mode from CLI flags and config."""
+    if args.agent_type is not None:
+        return args.agent_type
+    if _has_llm_keys(agent_mix):
+        return "mixed"
+    return "heuristic"
+
+
+def _build_factory(
+    mode: str,
+    config: SimulationConfig,
+    args: argparse.Namespace,
+) -> AgentFactory:
+    """Build the appropriate AgentFactory for the given mode."""
+    from evomarket.agents.heuristic_agent import HeuristicAgentFactory
+
+    if mode == "heuristic":
+        return HeuristicAgentFactory(config)
+
+    from evomarket.agents.llm_agent import LLMAgentFactory, MixedAgentFactory
+    from evomarket.agents.llm_backend import LLMBackend
+
+    if mode == "llm":
+        # Legacy single-backend mode
+        backend = LLMBackend(
+            model=args.model,
+            base_url=args.llm_url,
+            api_key=args.llm_api_key,
+        )
+        return LLMAgentFactory(backend, config)
+
+    # Mixed mode — build backends from config + CLI key
+    api_key = args.llm_api_key
+    backends: dict[str, LLMBackend] = {}
+
+    # Named backends from config's llm_backends
+    for name, spec in config.llm_backends.items():
+        backends[name] = LLMBackend(
+            model=spec["model"],
+            base_url=spec.get("base_url", "http://localhost:11434/v1"),
+            api_key=api_key,
+        )
+
+    # Bare "llm" key support — use CLI --model / --llm-url
+    if "llm" in config.agent_mix and "" not in backends:
+        backends[""] = LLMBackend(
+            model=args.model,
+            base_url=args.llm_url,
+            api_key=api_key,
+        )
+
+    return MixedAgentFactory(config, llm_backends=backends)
+
+
 def _cmd_run(args: argparse.Namespace) -> None:
     """Execute the 'run' subcommand."""
-    from evomarket.agents.heuristic_agent import HeuristicAgentFactory
     from evomarket.simulation.runner import run_episode
 
     # Load or create config
@@ -147,10 +207,8 @@ def _cmd_run(args: argparse.Namespace) -> None:
     if args.population is not None:
         config_overrides["population_size"] = args.population
 
-    is_llm = args.agent_type == "llm"
-
-    # For LLM mode, build an LLM-compatible agent_mix
-    if is_llm:
+    # For legacy --agent-type llm, override agent_mix to all-LLM
+    if args.agent_type == "llm":
         pop = config_overrides.get("population_size", config.population_size)
         config_overrides["agent_mix"] = {"llm": pop}
 
@@ -161,26 +219,27 @@ def _cmd_run(args: argparse.Namespace) -> None:
 
     config = SimulationConfig(**config_overrides)
 
+    mode = _detect_agent_mode(args, config.agent_mix)
+    has_llm = mode in ("llm", "mixed")
+
     output_dir = Path(args.output_dir) if not fast_mode else None
 
-    # Create the appropriate agent factory
-    if is_llm:
-        from evomarket.agents.llm_agent import LLMAgentFactory
-        from evomarket.agents.llm_backend import LLMBackend
+    factory = _build_factory(mode, config, args)
 
-        backend = LLMBackend(
-            model=args.model,
-            base_url=args.llm_url,
-            api_key=args.llm_api_key,
-        )
-        factory = LLMAgentFactory(backend, config)
+    if mode == "llm":
         print(
             f"Running LLM episode: model={args.model}, url={args.llm_url}, "
             f"seed={config.seed}, ticks={config.ticks_per_episode}, "
             f"agents={config.population_size}"
         )
+    elif mode == "mixed":
+        llm_keys = [k for k in config.agent_mix if k == "llm" or k.startswith("llm:")]
+        print(
+            f"Running mixed episode: llm_types={llm_keys}, "
+            f"seed={config.seed}, ticks={config.ticks_per_episode}, "
+            f"agents={config.population_size}"
+        )
     else:
-        factory = HeuristicAgentFactory(config)
         print(
             f"Running episode: seed={config.seed}, ticks={config.ticks_per_episode}, "
             f"agents={config.population_size}"
@@ -199,7 +258,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
         factory,
         output_dir=output_dir,
         enable_logging=not fast_mode,
-        tick_callback=_llm_tick_callback if is_llm else None,
+        tick_callback=_llm_tick_callback if has_llm else None,
         stop_condition=stop_condition,
     )
     elapsed = time.time() - start
@@ -286,21 +345,8 @@ def _cmd_resume(args: argparse.Namespace) -> None:
 
     output_dir = Path(args.output_dir) if args.output_dir else None
 
-    is_llm = args.agent_type == "llm"
-    if is_llm:
-        from evomarket.agents.llm_agent import LLMAgentFactory
-        from evomarket.agents.llm_backend import LLMBackend
-
-        backend = LLMBackend(
-            model=args.model,
-            base_url=args.llm_url,
-            api_key=args.llm_api_key,
-        )
-        factory = LLMAgentFactory(backend, config)
-    else:
-        from evomarket.agents.heuristic_agent import HeuristicAgentFactory
-
-        factory = HeuristicAgentFactory(config)
+    mode = _detect_agent_mode(args, config.agent_mix)
+    factory = _build_factory(mode, config, args)
 
     print(f"Resuming from {checkpoint_path}...")
     start = time.time()
