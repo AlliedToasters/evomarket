@@ -29,7 +29,9 @@ def _default_availability(
     can_sell_to_npc: bool = False,
     sellable_items: list[SellableItem] | None = None,
     can_buy_from_npc: bool = False,
-    can_post_order: bool = True,
+    can_post_sell_order: bool = False,
+    post_sell_inventory: dict[CommodityType, int] | None = None,
+    can_post_buy_order: bool = True,
     fillable_orders: list[FillableOrder] | None = None,
     can_propose_trade: bool = False,
     tradeable_agents: list[str] | None = None,
@@ -46,7 +48,9 @@ def _default_availability(
         can_sell_to_npc=can_sell_to_npc,
         sellable_items=sellable_items or [],
         can_buy_from_npc=can_buy_from_npc,
-        can_post_order=can_post_order,
+        can_post_sell_order=can_post_sell_order,
+        post_sell_inventory=post_sell_inventory or {},
+        can_post_buy_order=can_post_buy_order,
         fillable_orders=fillable_orders or [],
         can_propose_trade=can_propose_trade,
         tradeable_agents=tradeable_agents or [],
@@ -151,7 +155,9 @@ class TestPreamble:
                 ),
             ],
             can_buy_from_npc=True,
-            can_post_order=True,
+            can_post_sell_order=True,
+            post_sell_inventory={CommodityType.IRON: 2},
+            can_post_buy_order=True,
             fillable_orders=[
                 FillableOrder(
                     order_id="ord_001",
@@ -345,19 +351,56 @@ class TestWorldState:
 class TestActionAvailabilityInPrompt:
     """Test that ActionAvailability controls which actions appear in the prompt."""
 
-    def test_post_order_hidden_at_limit(self):
-        """post_order should not appear when can_post_order is False."""
-        avail = _default_availability(can_post_order=False)
+    def test_post_sell_order_hidden_without_inventory(self):
+        """post_order sell should not appear when agent has no inventory."""
+        avail = _default_availability(
+            can_post_sell_order=False, can_post_buy_order=True
+        )
+        obs = _make_observation(action_availability=avail)
+        prompt = render_prompt(obs, "", "agent_001")
+        assert "post_order sell" not in prompt
+        assert "post_order buy" in prompt
+
+    def test_post_buy_order_hidden_without_credits(self):
+        """post_order buy should not appear when agent has no credits."""
+        avail = _default_availability(
+            can_post_sell_order=True,
+            post_sell_inventory={CommodityType.IRON: 3},
+            can_post_buy_order=False,
+        )
+        obs = _make_observation(action_availability=avail)
+        prompt = render_prompt(obs, "", "agent_001")
+        assert "post_order sell" in prompt
+        assert "post_order buy" not in prompt
+
+    def test_post_order_both_hidden_at_order_limit(self):
+        """Neither post_order variant should appear at order limit."""
+        avail = _default_availability(
+            can_post_sell_order=False, can_post_buy_order=False
+        )
         obs = _make_observation(action_availability=avail)
         prompt = render_prompt(obs, "", "agent_001")
         assert "post_order" not in prompt
 
-    def test_post_order_shown_under_limit(self):
-        """post_order should appear when can_post_order is True."""
-        avail = _default_availability(can_post_order=True)
+    def test_post_sell_order_shows_inventory(self):
+        """post_order sell should show what the agent has."""
+        avail = _default_availability(
+            can_post_sell_order=True,
+            post_sell_inventory={CommodityType.IRON: 3, CommodityType.WOOD: 2},
+        )
         obs = _make_observation(action_availability=avail)
         prompt = render_prompt(obs, "", "agent_001")
-        assert "post_order" in prompt
+        assert "post_order sell" in prompt
+        assert "IRON=3" in prompt
+        assert "WOOD=2" in prompt
+
+    def test_post_buy_order_shows_credits(self):
+        """post_order buy should show agent's credits."""
+        avail = _default_availability(can_post_buy_order=True)
+        obs = _make_observation(credits=15000, action_availability=avail)
+        prompt = render_prompt(obs, "", "agent_001")
+        assert "post_order buy" in prompt
+        assert "credits=15.0" in prompt
 
     def test_propose_trade_hidden_at_limit(self):
         """propose_trade should not appear when can_propose_trade is False."""

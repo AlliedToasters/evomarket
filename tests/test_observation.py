@@ -306,15 +306,55 @@ class TestActionAvailability:
         obs = generate_observations(world)
         avail = obs[first_id].action_availability
         assert avail is not None
-        assert avail.can_post_order is False
+        assert avail.can_post_sell_order is False
+        assert avail.can_post_buy_order is False
 
-    def test_post_order_available_under_limit(self) -> None:
+    def test_post_sell_order_requires_inventory(self) -> None:
+        world = _make_world()
+        first_id = next(iter(world.agents))
+        agent = world.agents[first_id]
+        # Zero out all inventory
+        for c in agent.inventory:
+            agent.inventory[c] = 0
+
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_post_sell_order is False
+        assert avail.post_sell_inventory == {}
+
+    def test_post_sell_order_available_with_inventory(self) -> None:
+        world = _make_world()
+        first_id = next(iter(world.agents))
+        agent = world.agents[first_id]
+        commodity = list(agent.inventory.keys())[0]
+        agent.inventory[commodity] = 5
+
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_post_sell_order is True
+        assert commodity in avail.post_sell_inventory
+        assert avail.post_sell_inventory[commodity] == 5
+
+    def test_post_buy_order_requires_credits(self) -> None:
+        world = _make_world()
+        first_id = next(iter(world.agents))
+        agent = world.agents[first_id]
+        agent.credits = 0
+
+        obs = generate_observations(world)
+        avail = obs[first_id].action_availability
+        assert avail is not None
+        assert avail.can_post_buy_order is False
+
+    def test_post_buy_order_available_with_credits(self) -> None:
         world = _make_world()
         first_id = next(iter(world.agents))
         obs = generate_observations(world)
         avail = obs[first_id].action_availability
         assert avail is not None
-        assert avail.can_post_order is True
+        assert avail.can_post_buy_order is True
 
     def test_propose_trade_gated_by_max_pending_trades(self) -> None:
         world = _make_world()

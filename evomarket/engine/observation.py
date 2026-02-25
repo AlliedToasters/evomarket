@@ -126,7 +126,9 @@ class ActionAvailability:
     can_sell_to_npc: bool
     sellable_items: list[SellableItem]
     can_buy_from_npc: bool
-    can_post_order: bool
+    can_post_sell_order: bool
+    post_sell_inventory: dict[CommodityType, int]
+    can_post_buy_order: bool
     fillable_orders: list[FillableOrder]
     can_propose_trade: bool
     tradeable_agents: list[str]
@@ -200,9 +202,12 @@ def _compute_action_availability(
     # NPC buy: agent has credits and node has npc_buys
     can_buy_from_npc = bool(node.npc_buys and agent.credits > 0)
 
-    # Post order: under max_open_orders limit
+    # Post order: under max_open_orders limit, split by sell (needs inventory) / buy (needs credits)
     agent_order_count = len(world.orders_for_agent(agent_id))
-    can_post_order = agent_order_count < world.config.max_open_orders
+    under_order_limit = agent_order_count < world.config.max_open_orders
+    can_post_sell_order = under_order_limit and bool(inv)
+    post_sell_inventory = dict(inv) if can_post_sell_order else {}
+    can_post_buy_order = under_order_limit and agent.credits > 0
 
     # Fillable orders: orders at node the agent can fill, excluding own
     fillable_orders: list[FillableOrder] = []
@@ -285,7 +290,9 @@ def _compute_action_availability(
         can_sell_to_npc=can_sell_to_npc,
         sellable_items=sellable_items,
         can_buy_from_npc=can_buy_from_npc,
-        can_post_order=can_post_order,
+        can_post_sell_order=can_post_sell_order,
+        post_sell_inventory=post_sell_inventory,
+        can_post_buy_order=can_post_buy_order,
         fillable_orders=fillable_orders,
         can_propose_trade=can_propose_trade,
         tradeable_agents=tradeable_agents,

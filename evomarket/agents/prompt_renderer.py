@@ -68,10 +68,19 @@ def _get_valid_actions(obs: AgentObservation) -> list[str]:
     if avail.can_buy_from_npc:
         actions.append("  buy <commodity> <qty> <price>  — buy from NPC")
 
-    # Post order
-    if avail.can_post_order:
+    # Post sell order (only if agent has inventory)
+    if avail.can_post_sell_order:
+        inv_str = ", ".join(
+            f"{c.value}={q}" for c, q in avail.post_sell_inventory.items()
+        )
         actions.append(
-            "  post_order sell|buy <commodity> <qty> <price>  — post limit order"
+            f"  post_order sell <commodity> <qty> <price>  — post sell order (you have: {inv_str})"
+        )
+
+    # Post buy order (only if agent has credits)
+    if avail.can_post_buy_order:
+        actions.append(
+            f"  post_order buy <commodity> <qty> <price>  — post buy order (credits={_mc(obs.agent_state.credits)})"
         )
 
     # Accept order (fillable orders)
