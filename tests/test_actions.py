@@ -806,9 +806,12 @@ class TestNpcSellResolution:
         results = resolve_actions(world, actions)
         assert results[0].success is True
 
-        # NPC should have auto-filled via iterative pricing
-        # base price * (cap - stockpile) / cap = 5000 * (50-0) / 50 = 5000
-        npc_price = 5000 * (50 - 0) // 50
+        # NPC auto-filled via iterative pricing.
+        # process_npc_sell excludes the selling agent's inventory but
+        # agent_002 at node_iron holds 3 IRON which depresses the price:
+        # 5000 * max(0, 50 - 0 - 3) // 50 = 4700
+        other_supply = world.agents["agent_002"].inventory.get(CommodityType.IRON, 0)
+        npc_price = 5000 * max(0, 50 - 0 - other_supply) // 50
         assert world.agents["agent_001"].credits == initial_credits + npc_price
         assert world.nodes["node_iron"].npc_stockpile[CommodityType.IRON] == 1
 
@@ -837,10 +840,16 @@ class TestNpcSellResolution:
         assert len(sell_orders) == 1
 
     def test_npc_pricing_supply_responsive(self, world: WorldState) -> None:
-        """NPC price decreases as stockpile increases."""
+        """NPC price decreases as stockpile and local agent supply increase."""
         node = world.nodes["node_iron"]
         node.npc_stockpile[CommodityType.IRON] = 25
-        expected_price = 5000 * (50 - 25) // 50
+        # agent_001 (5 IRON) and agent_002 (3 IRON) are at node_iron
+        local_supply = sum(
+            a.inventory.get(CommodityType.IRON, 0)
+            for a in world.agents.values()
+            if a.location == "node_iron"
+        )
+        expected_price = 5000 * max(0, 50 - 25 - local_supply) // 50
 
         actual_price = world.get_npc_price("node_iron", CommodityType.IRON)
         assert actual_price == expected_price

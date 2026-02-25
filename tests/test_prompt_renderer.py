@@ -12,6 +12,7 @@ from evomarket.engine.observation import (
     AgentPublicView,
     AgentStateView,
     FillableOrder,
+    MarketPriceView,
     MessageView,
     NodeView,
     OrderView,
@@ -472,3 +473,98 @@ class TestActionAvailabilityInPrompt:
         prompt = render_prompt(obs, "", "agent_001")
         assert "accept_trade trade_001" in prompt
         assert "accept_trade trade_002" not in prompt
+
+
+class TestMarketPricesInPrompt:
+    """Test that market prices are rendered in the prompt."""
+
+    def test_renders_market_prices_section(self):
+        market_prices = [
+            MarketPriceView(
+                node_id="node_hub_iron",
+                node_name="Hub Iron",
+                prices={CommodityType.IRON: 2000, CommodityType.WOOD: 5000},
+            ),
+            MarketPriceView(
+                node_id="node_hub_herbs",
+                node_name="Hub Herbs",
+                prices={CommodityType.HERBS: 4500, CommodityType.IRON: 5000},
+            ),
+        ]
+        obs = _make_observation()
+        # Replace with an observation that has market_prices
+        obs = AgentObservation(
+            preamble=obs.preamble,
+            prompt_document=obs.prompt_document,
+            agent_state=obs.agent_state,
+            node_info=obs.node_info,
+            agents_present=obs.agents_present,
+            posted_orders=obs.posted_orders,
+            messages_received=obs.messages_received,
+            pending_proposals=obs.pending_proposals,
+            own_orders=obs.own_orders,
+            own_pending_proposals=obs.own_pending_proposals,
+            own_will=obs.own_will,
+            action_availability=obs.action_availability,
+            market_prices=market_prices,
+        )
+        prompt = render_prompt(obs, "", "agent_001")
+        assert "MARKET PRICES" in prompt
+        assert "node_hub_iron" in prompt
+        assert "node_hub_herbs" in prompt
+        assert "Hub Iron" in prompt
+        assert "Hub Herbs" in prompt
+        # Check price values rendered as credits
+        assert "2.0cr" in prompt
+        assert "5.0cr" in prompt
+        assert "4.5cr" in prompt
+
+    def test_marks_current_location(self):
+        market_prices = [
+            MarketPriceView(
+                node_id="node_iron_peak",
+                node_name="Iron Peak",
+                prices={CommodityType.IRON: 5000},
+            ),
+            MarketPriceView(
+                node_id="node_hub_herbs",
+                node_name="Hub Herbs",
+                prices={CommodityType.HERBS: 4500},
+            ),
+        ]
+        obs = _make_observation()
+        obs = AgentObservation(
+            preamble=obs.preamble,
+            prompt_document=obs.prompt_document,
+            agent_state=obs.agent_state,
+            node_info=obs.node_info,
+            agents_present=obs.agents_present,
+            posted_orders=obs.posted_orders,
+            messages_received=obs.messages_received,
+            pending_proposals=obs.pending_proposals,
+            own_orders=obs.own_orders,
+            own_pending_proposals=obs.own_pending_proposals,
+            own_will=obs.own_will,
+            action_availability=obs.action_availability,
+            market_prices=market_prices,
+        )
+        prompt = render_prompt(obs, "", "agent_001")
+        # Agent is at node_iron_peak, so the market prices line should have the marker
+        assert "YOU ARE HERE" in prompt
+        # Find the line within the MARKET PRICES section
+        in_market_section = False
+        found = False
+        for line in prompt.split("\n"):
+            if "MARKET PRICES" in line:
+                in_market_section = True
+                continue
+            if in_market_section and "node_iron_peak" in line:
+                assert "YOU ARE HERE" in line
+                found = True
+                break
+        assert found, "Did not find node_iron_peak in MARKET PRICES section"
+
+    def test_no_market_prices_section_when_none(self):
+        obs = _make_observation()
+        prompt = render_prompt(obs, "", "agent_001")
+        assert "MARKET PRICES" not in prompt

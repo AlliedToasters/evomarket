@@ -221,6 +221,21 @@ class TestObservationGeneration:
         for observation in obs.values():
             assert observation.action_availability is not None
 
+    def test_market_prices_included(self) -> None:
+        world = _make_world()
+        obs = generate_observations(world)
+        for observation in obs.values():
+            assert observation.market_prices is not None
+            # Should have one entry per trade hub
+            trade_hubs = [
+                n for n in world.nodes.values() if n.node_type == NodeType.TRADE_HUB
+            ]
+            assert len(observation.market_prices) == len(trade_hubs)
+            # Each MarketPriceView should have a node_id matching a trade hub
+            mp_node_ids = {mp.node_id for mp in observation.market_prices}
+            hub_ids = {n.node_id for n in trade_hubs}
+            assert mp_node_ids == hub_ids
+
 
 class TestActionAvailability:
     """Tests for ActionAvailability computation."""

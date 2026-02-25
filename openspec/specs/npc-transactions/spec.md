@@ -8,8 +8,12 @@ The system SHALL provide a `process_npc_sell(world: WorldState, agent_id: str, c
 - **THEN** the agent receives 5000mc (full base price), the node's NPC stockpile for IRON increases to 1, the agent's IRON inventory decreases by 1, and the node's NPC budget decreases by 5000mc
 
 #### Scenario: Multi-unit iterative pricing
-- **WHEN** an agent sells 3 units of IRON at a node with zero stockpile, base_price=5000mc, capacity=50
-- **THEN** unit 1 price is `5000 * (50-0) // 50 = 5000`, unit 2 price is `5000 * (50-1) // 50 = 4900`, unit 3 price is `5000 * (50-2) // 50 = 4800`, and the total payout is 14700mc
+- **WHEN** an agent sells 3 units of IRON at a node with zero stockpile, base_price=5000mc, capacity=50, and the agent is the only one at the node
+- **THEN** unit 1 price is `5000 * max(0, 50 - 0 - remaining_agent_supply) // 50` computed with `exclude_agent_id` so the selling agent's own inventory does not depress the price. Each subsequent unit reflects the increased NPC stockpile but excludes the selling agent's diminishing inventory.
+
+#### Scenario: Crowded-node sell (agent supply depresses price)
+- **WHEN** an agent at a node with zero NPC stockpile, base_price=5000mc, capacity=50 sells 1 unit of IRON, and *other* agents at the node collectively hold 30 units of IRON
+- **THEN** the selling agent's price is `5000 * max(0, 50 - 0 - 30) // 50 = 2000mc` because `exclude_agent_id` excludes the seller but the 30 units held by other agents still count as local supply
 
 #### Scenario: Budget-constrained sale
 - **WHEN** an agent sells 5 units but the node's NPC budget can only cover 3 units worth of credits

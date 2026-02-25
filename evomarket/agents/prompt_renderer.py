@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from evomarket.core.types import MILLICREDITS_PER_CREDIT, Millicredits
+from evomarket.core.types import MILLICREDITS_PER_CREDIT, CommodityType, Millicredits
 from evomarket.engine.observation import AgentObservation
 
 
@@ -132,6 +132,26 @@ def _get_valid_actions(obs: AgentObservation) -> list[str]:
     return actions
 
 
+def _best_price_elsewhere(
+    obs: AgentObservation, commodity: CommodityType
+) -> tuple[str, Millicredits] | None:
+    """Find the hub with the best price for a commodity, excluding current node."""
+    if not obs.market_prices:
+        return None
+    best_node: str | None = None
+    best_price: Millicredits = 0
+    for mp in obs.market_prices:
+        if mp.node_id == obs.agent_state.location:
+            continue
+        price = mp.prices.get(commodity, 0)
+        if price > best_price:
+            best_price = price
+            best_node = mp.node_id
+    if best_node and best_price > 0:
+        return best_node, best_price
+    return None
+
+
 def _get_strategic_hint(obs: AgentObservation) -> str:
     """Generate a context-sensitive strategic hint based on current situation."""
     avail = obs.action_availability
@@ -146,6 +166,21 @@ def _get_strategic_hint(obs: AgentObservation) -> str:
             " will run out. Spread out to different RESOURCE nodes to avoid competition."
         )
 
+    # Price arbitrage hint when selling to NPC
+    arbitrage_hint = ""
+    if avail and avail.can_sell_to_npc and obs.market_prices:
+        for item in avail.sellable_items:
+            better = _best_price_elsewhere(obs, item.commodity)
+            if better:
+                other_node, other_price = better
+                if other_price > item.npc_price:
+                    arbitrage_hint = (
+                        f" TIP: {item.commodity.value} sells for"
+                        f" {_mc(other_price)}cr at {other_node}"
+                        f" vs {_mc(item.npc_price)}cr here."
+                    )
+                    break
+
     if node_type == "SPAWN":
         return "HINT: You are at SPAWN. Move out to find resources." + crowd_warning
     if avail and avail.can_harvest:
@@ -154,7 +189,10 @@ def _get_strategic_hint(obs: AgentObservation) -> str:
             + crowd_warning
         )
     if avail and avail.can_sell_to_npc:
-        return "HINT: You have goods and there's an NPC buyer here. Sell for credits!"
+        return (
+            "HINT: You have goods and there's an NPC buyer here. Sell for credits!"
+            + arbitrage_hint
+        )
 
     inv_count = sum(obs.agent_state.inventory.values())
     if inv_count > 0 and node_type == "RESOURCE":
@@ -294,6 +332,31 @@ def _render_world_state(obs: AgentObservation) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Market prices (global hub visibility)
+# ---------------------------------------------------------------------------
+
+
+def _render_market_prices(obs: AgentObservation) -> str | None:
+    """Render a MARKET PRICES section showing NPC buy prices at all trade hubs.
+
+    Returns None when market_prices is not available.
+    """
+    if not obs.market_prices:
+        return None
+
+    lines: list[str] = ["=== MARKET PRICES (all trade hubs) ==="]
+    current_node = obs.agent_state.location
+
+    for mp in obs.market_prices:
+        here_marker = " ← YOU ARE HERE" if mp.node_id == current_node else ""
+        price_parts = [f"{c.value}={_mc(p)}cr" for c, p in mp.prices.items()]
+        prices_str = ", ".join(price_parts) if price_parts else "none"
+        lines.append(f"  {mp.node_id} ({mp.node_name}): {prices_str}{here_marker}")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -305,11 +368,15 @@ def render_prompt(
 ) -> str:
     """Render a complete prompt from an observation.
 
-    Returns a string with three sections: preamble, scratchpad, world state.
+    Returns a string with sections: preamble, scratchpad, world state,
+    and optionally market prices.
     """
     parts = [
         _render_preamble(agent_id, scratchpad, observation),
         _render_scratchpad(scratchpad),
         _render_world_state(observation),
     ]
+    market = _render_market_prices(observation)
+    if market:
+        parts.append(market)
     return "\n\n".join(parts)

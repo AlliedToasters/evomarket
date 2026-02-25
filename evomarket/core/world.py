@@ -429,10 +429,38 @@ class WorldState:
         else:
             raise KeyError(f"Unknown reservoir: {reservoir_id}")
 
-    def get_npc_price(self, node_id: str, commodity: CommodityType) -> Millicredits:
+    def _get_local_agent_supply(
+        self,
+        node_id: str,
+        commodity: CommodityType,
+        exclude_agent_id: str | None = None,
+    ) -> int:
+        """Total units of a commodity held by living agents at a node."""
+        total = 0
+        for agent in self.agents.values():
+            if not agent.alive or agent.location != node_id:
+                continue
+            if agent.agent_id == exclude_agent_id:
+                continue
+            total += agent.inventory.get(commodity, 0)
+        return total
+
+    def get_npc_price(
+        self,
+        node_id: str,
+        commodity: CommodityType,
+        exclude_agent_id: str | None = None,
+    ) -> Millicredits:
         """Get the current NPC buy price for a commodity at a node.
 
-        Uses supply-responsive pricing: base_price * (capacity - stockpile) // capacity
+        Uses supply-responsive pricing that accounts for both NPC stockpile
+        and local agent supply:
+            base_price * max(0, capacity - stockpile - local_agent_supply) // capacity
+
+        When ``exclude_agent_id`` is provided, that agent's inventory is not
+        counted in the local supply (used during sells so the selling agent's
+        own goods don't depress the price they receive).
+
         Returns 0 if the commodity is not bought at this node.
         """
         node = self.nodes[node_id]
@@ -443,7 +471,11 @@ class WorldState:
         capacity = node.npc_stockpile_capacity
         if capacity == 0:
             return 0
-        return base_price * (capacity - stockpile) // capacity
+        local_supply = self._get_local_agent_supply(
+            node_id, commodity, exclude_agent_id=exclude_agent_id
+        )
+        effective = max(0, capacity - stockpile - local_supply)
+        return base_price * effective // capacity
 
     def orders_at_node(self, node_id: str) -> list[object]:
         """Return all active orders at the given node."""

@@ -125,6 +125,15 @@ class FillableOrder:
 
 
 @dataclass(frozen=True)
+class MarketPriceView:
+    """Prices at a trade hub, visible to all agents."""
+
+    node_id: str
+    node_name: str
+    prices: dict[CommodityType, Millicredits]
+
+
+@dataclass(frozen=True)
 class ActionAvailability:
     """Pre-computed action availability for an agent."""
 
@@ -161,6 +170,7 @@ class AgentObservation:
     own_pending_proposals: list[TradeProposalView]
     own_will: dict[str, float]
     action_availability: ActionAvailability | None = None
+    market_prices: list[MarketPriceView] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +321,30 @@ def _compute_action_availability(
 
 
 # ---------------------------------------------------------------------------
+# Market prices (global visibility)
+# ---------------------------------------------------------------------------
+
+
+def _compute_market_prices(world: WorldState) -> list[MarketPriceView]:
+    """Compute NPC buy prices at every TRADE_HUB node (once per tick)."""
+    views: list[MarketPriceView] = []
+    for node in world.nodes.values():
+        if node.node_type != NodeType.TRADE_HUB:
+            continue
+        prices: dict[CommodityType, Millicredits] = {}
+        for commodity in node.npc_buys:
+            prices[commodity] = world.get_npc_price(node.node_id, commodity)
+        views.append(
+            MarketPriceView(
+                node_id=node.node_id,
+                node_name=node.name,
+                prices=prices,
+            )
+        )
+    return views
+
+
+# ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
 
@@ -320,6 +354,7 @@ def generate_observations(world: WorldState) -> dict[str, AgentObservation]:
     observations: dict[str, AgentObservation] = {}
 
     preamble = PreambleData(tick=world.tick)
+    market_prices = _compute_market_prices(world)
 
     for agent_id, agent in world.agents.items():
         if not agent.alive:
@@ -427,6 +462,7 @@ def generate_observations(world: WorldState) -> dict[str, AgentObservation]:
             own_pending_proposals=own_pending_proposals,
             own_will=dict(agent.will),
             action_availability=action_availability,
+            market_prices=market_prices,
         )
 
     return observations
