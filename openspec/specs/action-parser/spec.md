@@ -73,8 +73,30 @@ The parser SHALL extract text following a `SCRATCHPAD:` prefix as the scratchpad
 - **WHEN** the response contains no `SCRATCHPAD:` prefix
 - **THEN** the scratchpad update is `None`
 
+### Requirement: Sell/buy shorthand for post_order
+The parser SHALL accept `sell` and `buy` as shorthand for `post_order sell` and `post_order buy` respectively.
+
+#### Scenario: Sell shorthand
+- **WHEN** `parse_response` is called with `"ACTION: sell IRON 1 5.0"`
+- **THEN** it returns `PostOrderAction(side="sell", commodity=CommodityType.IRON, quantity=1, price=5000)`
+
+#### Scenario: Buy shorthand
+- **WHEN** `parse_response` is called with `"ACTION: buy WOOD 2 3.5"`
+- **THEN** it returns `PostOrderAction(side="buy", commodity=CommodityType.WOOD, quantity=2, price=3500)`
+
+### Requirement: Float price auto-conversion to millicredits
+The parser SHALL accept both integer (millicredits) and float (display credits) prices in `post_order`, `sell`, and `buy` actions. Values less than 1000 are interpreted as display credits and multiplied by 1000 to get millicredits; values >= 1000 are treated as millicredits directly.
+
+#### Scenario: Float price converted
+- **WHEN** `parse_response` is called with `"ACTION: post_order sell iron 3 4.5"`
+- **THEN** it returns `PostOrderAction` with `price=4500` (4.5 × 1000)
+
+#### Scenario: Large integer stays as millicredits
+- **WHEN** `parse_response` is called with `"ACTION: post_order sell iron 3 4500"`
+- **THEN** it returns `PostOrderAction` with `price=4500` (unchanged)
+
 ### Requirement: All action types parseable
-The parser SHALL support parsing all action types: `move`, `harvest`, `post_order`, `accept_order`, `propose_trade`, `accept_trade`, `send_message`, `update_will`, `inspect`, `idle`.
+The parser SHALL support parsing all action types: `move`, `harvest`, `post_order`, `sell`, `buy`, `accept_order`, `propose_trade`, `accept_trade`, `send_message`, `update_will`, `inspect`, `idle`.
 
 #### Scenario: accept_order parsed
 - **WHEN** `parse_response` is called with `"ACTION: accept_order ord_abc123"`
