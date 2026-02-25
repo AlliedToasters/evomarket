@@ -351,9 +351,7 @@ class TestActionAvailability:
         first_id = next(iter(world.agents))
         agent = world.agents[first_id]
         # Move everyone else away
-        other_node = [
-            nid for nid in world.nodes if nid != agent.location
-        ][0]
+        other_node = [nid for nid in world.nodes if nid != agent.location][0]
         for aid, a in world.agents.items():
             if aid != first_id:
                 a.location = other_node
