@@ -40,11 +40,19 @@ def _normalize_commodity(text: str) -> CommodityType | None:
 
 
 def _parse_int(text: str) -> int | None:
-    """Parse an integer, returning None on failure."""
+    """Parse an integer, returning None on failure.
+
+    Strips common LLM formatting like 'x' prefix (e.g. 'x1' → 1).
+    """
+    s = text.strip().lstrip("xX")
     try:
-        return int(text.strip())
+        return int(s)
     except (ValueError, TypeError):
-        return None
+        # Try parsing as float and truncating (e.g. "1.0")
+        try:
+            return int(float(s))
+        except (ValueError, TypeError):
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +131,10 @@ def _dispatch_action(action_type: str, args: list[str]) -> Action | None:
     elif action_type in ("post_order", "postorder", "post"):
         return _parse_post_order(args)
 
+    elif action_type in ("sell", "buy"):
+        # Shorthand: "sell IRON 1 5.0" → post_order sell IRON 1 5.0
+        return _parse_post_order([action_type] + args)
+
     elif action_type in ("accept_order", "acceptorder"):
         if not args:
             return None
@@ -151,7 +163,11 @@ def _dispatch_action(action_type: str, args: list[str]) -> Action | None:
 
 
 def _parse_post_order(args: list[str]) -> Action | None:
-    """Parse: sell|buy <commodity> <qty> <price>"""
+    """Parse: sell|buy <commodity> <qty> <price>
+
+    Price can be an integer (millicredits) or a float (display credits).
+    Floats are auto-converted to millicredits (×1000).
+    """
     if len(args) < 4:
         return None
     side = args[0].lower()
@@ -161,8 +177,20 @@ def _parse_post_order(args: list[str]) -> Action | None:
     if commodity is None:
         return None
     qty = _parse_int(args[2])
-    price = _parse_int(args[3])
-    if qty is None or qty <= 0 or price is None or price <= 0:
+    if qty is None or qty <= 0:
+        return None
+    # Accept float prices (display credits) and convert to millicredits
+    # Strip common LLM formatting like '@' prefix (e.g. '@4.5' → 4.5)
+    price_str = args[3].lstrip("@")
+    try:
+        price_raw = float(price_str)
+    except (ValueError, TypeError):
+        return None
+    if price_raw <= 0:
+        return None
+    # If the value looks like display credits (has decimal or is small), convert
+    price = int(price_raw * 1000) if price_raw < 1000 else int(price_raw)
+    if price <= 0:
         return None
     return PostOrderAction(side=side, commodity=commodity, quantity=qty, price=price)
 
@@ -170,19 +198,33 @@ def _parse_post_order(args: list[str]) -> Action | None:
 def _parse_propose_trade(args: list[str]) -> Action | None:
     """Parse: <agent_id> offer:<items> request:<items>
 
-    Items format: key=value,key=value (e.g. offer:iron=2,credits=5000)
+    Items format (any of):
+      key=value,key=value  (e.g. offer:iron=2,credits=5000)
+      {key=value}          (e.g. offer:{IRON=10})
+      [COMMODITY QTY]      (e.g. request:[IRON 10])
+      []/{}/empty           (empty offer or request)
     """
-    if len(args) < 3:
+    if len(args) < 2:
         return None
     target_agent = args[0]
     offer: dict[str, int] = {}
     request: dict[str, int] = {}
 
-    for arg in args[1:]:
-        if arg.lower().startswith("offer:"):
-            offer = _parse_trade_items(arg[6:])
-        elif arg.lower().startswith("request:"):
-            request = _parse_trade_items(arg[8:])
+    # Rejoin remaining args to handle spaces inside brackets
+    remainder = " ".join(args[1:])
+
+    # Extract offer and request sections
+    import re
+
+    offer_match = re.search(
+        r"offer:\s*(.+?)(?:\s+request:|$)", remainder, re.IGNORECASE
+    )
+    request_match = re.search(r"request:\s*(.+?)$", remainder, re.IGNORECASE)
+
+    if offer_match:
+        offer = _parse_trade_items(offer_match.group(1).strip())
+    if request_match:
+        request = _parse_trade_items(request_match.group(1).strip())
 
     if not offer and not request:
         return None
@@ -191,23 +233,49 @@ def _parse_propose_trade(args: list[str]) -> Action | None:
 
 
 def _parse_trade_items(items_str: str) -> dict[str, int]:
-    """Parse key=value pairs like 'iron=2,credits=5000'."""
+    """Parse trade items in various formats LLMs might produce.
+
+    Accepts:
+      iron=2,credits=5000    (key=value pairs)
+      {IRON=10}              (braces with key=value)
+      [IRON 10]              (brackets with space-separated)
+      [IRON 10 5.0]          (brackets with commodity qty price)
+      [] / {} / empty         (empty)
+    """
+    # Strip brackets/braces
+    s = items_str.strip().strip("[]{}").strip()
+    if not s:
+        return {}
+
     result: dict[str, int] = {}
-    for pair in items_str.split(","):
-        pair = pair.strip()
-        if "=" not in pair:
-            continue
-        key, val_str = pair.split("=", 1)
-        key = key.strip().lower()
-        val = _parse_int(val_str)
-        if val is None or val <= 0:
-            continue
-        # Normalize commodity names to uppercase enum values
-        commodity = _normalize_commodity(key)
-        if commodity is not None:
-            result[commodity.value] = val
-        elif key == "credits":
-            result["credits"] = val
+
+    # Try key=value format first
+    if "=" in s:
+        for pair in s.split(","):
+            pair = pair.strip()
+            if "=" not in pair:
+                continue
+            key, val_str = pair.split("=", 1)
+            key = key.strip().lower()
+            val = _parse_int(val_str)
+            if val is None or val <= 0:
+                continue
+            commodity = _normalize_commodity(key)
+            if commodity is not None:
+                result[commodity.value] = val
+            elif key == "credits":
+                result["credits"] = val
+        return result
+
+    # Try space-separated format: "IRON 10" or "IRON 10 5.0"
+    parts = s.split()
+    if len(parts) >= 2:
+        commodity = _normalize_commodity(parts[0])
+        qty = _parse_int(parts[1])
+        if commodity is not None and qty is not None and qty > 0:
+            result[commodity.value] = qty
+            return result
+
     return result
 
 

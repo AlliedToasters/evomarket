@@ -8,11 +8,11 @@ The system SHALL provide a `render_prompt(observation, scratchpad, agent_id)` fu
 - **THEN** the returned string contains a preamble section, a scratchpad section, and a world state section in that order
 
 ### Requirement: Preamble is a compressed reference card
-The preamble section SHALL contain compressed game rules and an action reference in a compact format optimized for token efficiency. It SHALL NOT be a verbose tutorial.
+The preamble section SHALL contain compressed game rules and an action reference in a compact format optimized for token efficiency. It SHALL NOT be a verbose tutorial. Action filtering uses pre-computed `ActionAvailability` from the observation layer (see `observation.py`), so the renderer formats pre-computed data rather than re-deriving predicates.
 
 #### Scenario: Preamble includes action reference
 - **WHEN** a prompt is rendered
-- **THEN** the preamble lists all valid action types with their argument formats
+- **THEN** the preamble lists valid action types (filtered by `ActionAvailability`) with their argument formats
 
 #### Scenario: Preamble includes core game rules
 - **WHEN** a prompt is rendered
@@ -21,6 +21,41 @@ The preamble section SHALL contain compressed game rules and an action reference
 #### Scenario: Preamble is token-efficient
 - **WHEN** a prompt is rendered with no scratchpad and minimal world state
 - **THEN** the preamble section is under 400 tokens (estimated as `len(text) // 4`)
+
+### Requirement: Context-aware action filtering
+The action list SHALL show only actions the agent can actually perform, with contextual hints derived from `ActionAvailability`.
+
+#### Scenario: Post sell order hidden without inventory
+- **WHEN** `action_availability.can_post_sell_order` is False (agent has no inventory)
+- **THEN** the `post_order sell` action line is NOT shown
+
+#### Scenario: Post buy order hidden without credits
+- **WHEN** `action_availability.can_post_buy_order` is False (agent has no credits)
+- **THEN** the `post_order buy` action line is NOT shown
+
+#### Scenario: Sell order line includes inventory hint
+- **WHEN** `can_post_sell_order` is True and agent has IRON=3, WOOD=1
+- **THEN** the sell order line shows `(you have: IRON=3, WOOD=1)`
+
+#### Scenario: Buy order line includes credit hint
+- **WHEN** `can_post_buy_order` is True
+- **THEN** the buy order line shows `(credits=X.X)` with the agent's credit balance
+
+#### Scenario: NPC sell shows per-item detail
+- **WHEN** agent can sell IRON to NPC
+- **THEN** the action list includes a line like `sell IRON <qty> <price> — sell to NPC (you have 3, NPC pays ~4.2cr)`
+
+#### Scenario: Fillable orders listed individually
+- **WHEN** there are 2 fillable orders at the node
+- **THEN** each gets its own `accept_order <id>` line with commodity, qty, price, and poster
+
+#### Scenario: Accept trade filtered by affordability
+- **WHEN** there are 3 pending proposals but the agent can only afford 2
+- **THEN** only the 2 affordable proposals are listed as `accept_trade` actions
+
+#### Scenario: Harvest hidden when unavailable
+- **WHEN** `can_harvest` is False
+- **THEN** the `harvest` action is NOT shown
 
 ### Requirement: Preamble includes live scratchpad token count
 The preamble SHALL display the current approximate token count of the scratchpad section.

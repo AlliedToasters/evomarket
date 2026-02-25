@@ -44,6 +44,7 @@ def _make_observation(
             name="Test",
             node_type=node_type,
             adjacent_nodes=adjacent,
+            adjacent_node_info=[],
             npc_prices={CommodityType.IRON: 5000},
             resource_availability=resource_avail,
         ),

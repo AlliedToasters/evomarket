@@ -18,17 +18,63 @@ from evomarket.core.types import Millicredits, to_display_credits
 from evomarket.core.world import WorldState, generate_world
 from evomarket.engine.actions import AgentTurnResult, IdleAction
 from evomarket.engine.observation import AgentObservation
-from evomarket.engine.tick import TickMetrics, execute_tick
+from evomarket.engine.tick import TickMetrics, TickResult, execute_tick
 from evomarket.simulation.config import SimulationConfig
 from evomarket.simulation.logging import EventLogger
 
 if TYPE_CHECKING:
     pass
 
+# Type alias for stop condition callbacks
+StopCondition = Callable[[int, WorldState, TickResult], bool]
+
 logger = logging.getLogger(__name__)
 
 # Order expiration age (ticks). Orders older than this are cancelled.
 _ORDER_EXPIRY_TICKS = 10
+
+# Action types considered "productive" for idle-streak detection
+_PRODUCTIVE_ACTIONS = frozenset(
+    {"harvest", "accept_order", "accept_trade", "propose_trade"}
+)
+
+
+def _tick_has_productive_action(tick_result: TickResult) -> bool:
+    """Return True if any agent performed a productive action this tick."""
+    for ar in tick_result.action_results:
+        if not ar.success:
+            continue
+        if ar.action.action_type in _PRODUCTIVE_ACTIONS:
+            return True
+        if ar.npc_sale:
+            return True
+    return False
+
+
+def idle_streak_stop(max_idle_ticks: int) -> StopCondition:
+    """Create a stop condition that triggers after N consecutive unproductive ticks.
+
+    A tick is "productive" if any agent successfully harvests, fills an order,
+    completes a trade, or sells to an NPC. Posting buy/sell orders and idling
+    are not productive.
+    """
+    streak = [0]  # mutable closure
+
+    def _check(tick_num: int, world: WorldState, tick_result: TickResult) -> bool:
+        if _tick_has_productive_action(tick_result):
+            streak[0] = 0
+            return False
+        streak[0] += 1
+        if streak[0] >= max_idle_ticks:
+            logger.info(
+                "Early stop: no productive actions for %d ticks at tick %d",
+                max_idle_ticks,
+                tick_num,
+            )
+            return True
+        return False
+
+    return _check
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +157,7 @@ def run_episode(
     output_dir: Path | None = None,
     enable_logging: bool = True,
     tick_callback: Callable[[int, float], None] | None = None,
+    stop_condition: StopCondition | None = None,
 ) -> EpisodeResult:
     """Execute a complete simulation episode.
 
@@ -120,6 +167,8 @@ def run_episode(
         output_dir: Directory for checkpoints and logs. None disables file output.
         enable_logging: Whether to enable SQLite event logging.
         tick_callback: Optional callback(tick_num, wall_seconds) called after each tick.
+        stop_condition: Optional callback(tick_num, world, tick_result) that returns
+            True to stop the simulation early. Called after each tick.
 
     Returns:
         EpisodeResult with final state, metrics, and agent summaries.
@@ -169,78 +218,99 @@ def run_episode(
     # Main tick loop
     tick_metrics_list: list[TickMetrics] = []
 
-    for tick_num in range(config.ticks_per_episode):
-        # Check if all agents are dead
-        alive_count = sum(1 for a in world.agents.values() if a.alive)
-        if alive_count == 0:
-            logger.info("All agents dead at tick %d, terminating early", tick_num)
-            break
+    try:
+        for tick_num in range(config.ticks_per_episode):
+            # Check if all agents are dead
+            alive_count = sum(1 for a in world.agents.values() if a.alive)
+            if alive_count == 0:
+                logger.info("All agents dead at tick %d, terminating early", tick_num)
+                break
 
-        # Expire old orders to keep order book bounded
-        _expire_old_orders(world, tick_num)
+            # Expire old orders to keep order book bounded
+            _expire_old_orders(world, tick_num)
 
-        # Execute tick
-        tick_start = time.monotonic()
-        tick_result = execute_tick(
-            world,
-            agent_decisions,
-            debug=config.verify_invariant_every_phase,
+            # Execute tick
+            tick_start = time.monotonic()
+            tick_result = execute_tick(
+                world,
+                agent_decisions,
+                debug=config.verify_invariant_every_phase,
+            )
+            tick_wall_time = time.monotonic() - tick_start
+            tick_metrics_list.append(tick_result.metrics)
+
+            if tick_callback is not None:
+                tick_callback(tick_num, tick_wall_time)
+
+            # Track agent stats from action results
+            for ar in tick_result.action_results:
+                record = registry.get(ar.agent_id)
+                if record is None:
+                    continue
+                if ar.success and ar.action.action_type in (
+                    "accept_order",
+                    "accept_trade",
+                ):
+                    record.trades += 1
+                if ar.success and ar.action.action_type == "send_message":
+                    record.messages += 1
+
+            # Track deaths
+            for dr in tick_result.death_results:
+                record = registry.get(dr.agent_id)
+                if record is not None:
+                    record.death_tick = tick_num
+                    record.cause_of_death = "tax_insolvency"
+                    agent_state = world.agents.get(dr.agent_id)
+                    if agent_state is not None:
+                        record.prompt_at_death = agent_state.prompt_document
+
+            # Register newly spawned agents
+            for sr in tick_result.spawn_results:
+                if sr.agent_id not in registry:
+                    agent = agent_factory.create_agent(sr.agent_id)
+                    agent.on_spawn(sr.agent_id, config)
+                    agent_type = type(agent).__name__
+                    registry[sr.agent_id] = _AgentRecord(
+                        agent_id=sr.agent_id,
+                        agent_type=agent_type,
+                        agent=agent,
+                        spawn_tick=tick_num,
+                    )
+
+            # Log events
+            event_logger.log_tick(tick_num, tick_result.metrics)
+            event_logger.log_actions(tick_num, tick_result.action_results)
+            event_logger.log_trades(tick_num, tick_result.action_results)
+            event_logger.log_deaths(tick_num, tick_result.death_results)
+            event_logger.log_messages(tick_num, tick_result.action_results)
+            event_logger.log_agent_snapshots(tick_num, world)
+            event_logger.log_npc_snapshots(tick_num, world)
+            event_logger.flush_tick()
+
+            # Checkpoint
+            if (
+                config.checkpoint_interval > 0
+                and checkpoint_dir is not None
+                and (tick_num + 1) % config.checkpoint_interval == 0
+            ):
+                _save_checkpoint(world, registry, checkpoint_dir, tick_num)
+
+            # Check stop condition after logging (so partial results are captured)
+            if stop_condition is not None and stop_condition(
+                tick_num, world, tick_result
+            ):
+                if checkpoint_dir is not None:
+                    _save_checkpoint(world, registry, checkpoint_dir, tick_num)
+                break
+
+    except KeyboardInterrupt:
+        tick_num = max(0, len(tick_metrics_list) - 1)
+        logger.info(
+            "Interrupted at tick %d, saving partial results...",
+            tick_num,
         )
-        tick_wall_time = time.monotonic() - tick_start
-        tick_metrics_list.append(tick_result.metrics)
-
-        if tick_callback is not None:
-            tick_callback(tick_num, tick_wall_time)
-
-        # Track agent stats from action results
-        for ar in tick_result.action_results:
-            record = registry.get(ar.agent_id)
-            if record is None:
-                continue
-            if ar.success and ar.action.action_type in ("accept_order", "accept_trade"):
-                record.trades += 1
-            if ar.success and ar.action.action_type == "send_message":
-                record.messages += 1
-
-        # Track deaths
-        for dr in tick_result.death_results:
-            record = registry.get(dr.agent_id)
-            if record is not None:
-                record.death_tick = tick_num
-                record.cause_of_death = "tax_insolvency"
-                agent_state = world.agents.get(dr.agent_id)
-                if agent_state is not None:
-                    record.prompt_at_death = agent_state.prompt_document
-
-        # Register newly spawned agents
-        for sr in tick_result.spawn_results:
-            if sr.agent_id not in registry:
-                agent = agent_factory.create_agent(sr.agent_id)
-                agent.on_spawn(sr.agent_id, config)
-                agent_type = type(agent).__name__
-                registry[sr.agent_id] = _AgentRecord(
-                    agent_id=sr.agent_id,
-                    agent_type=agent_type,
-                    agent=agent,
-                    spawn_tick=tick_num,
-                )
-
-        # Log events
-        event_logger.log_tick(tick_num, tick_result.metrics)
-        event_logger.log_actions(tick_num, tick_result.action_results)
-        event_logger.log_trades(tick_num, tick_result.action_results)
-        event_logger.log_deaths(tick_num, tick_result.death_results)
-        event_logger.log_messages(tick_num, tick_result.action_results)
-        event_logger.log_agent_snapshots(tick_num, world)
-        event_logger.log_npc_snapshots(tick_num, world)
-        event_logger.flush_tick()
-
-        # Checkpoint
-        if (
-            config.checkpoint_interval > 0
-            and checkpoint_dir is not None
-            and (tick_num + 1) % config.checkpoint_interval == 0
-        ):
+        if checkpoint_dir is not None:
             _save_checkpoint(world, registry, checkpoint_dir, tick_num)
 
     event_logger.close()
@@ -289,6 +359,7 @@ def _save_checkpoint(
                 "cause_of_death": rec.cause_of_death,
                 "trades": rec.trades,
                 "messages": rec.messages,
+                "agent_state": rec.agent.get_state(),
             }
             for agent_id, rec in registry.items()
         },
@@ -337,6 +408,10 @@ def resume_from_checkpoint(
     for agent_id, meta in checkpoint["agent_registry"].items():
         agent = agent_factory.create_agent(agent_id)
         agent.on_spawn(agent_id, config)
+        # Restore agent controller state if saved in checkpoint
+        saved_agent_state = meta.get("agent_state")
+        if saved_agent_state is not None:
+            agent.set_state(saved_agent_state)
         registry[agent_id] = _AgentRecord(
             agent_id=agent_id,
             agent_type=meta["agent_type"],

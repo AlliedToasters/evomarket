@@ -76,6 +76,12 @@ def _create_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override population_size",
     )
+    run_parser.add_argument(
+        "--max-idle-ticks",
+        type=int,
+        default=0,
+        help="Early stop after N ticks with no productive actions (0=disabled)",
+    )
 
     # analyze
     analyze_parser = subparsers.add_parser(
@@ -95,6 +101,25 @@ def _create_parser() -> argparse.ArgumentParser:
     )
     resume_parser.add_argument(
         "--output-dir", type=str, default=None, help="Output directory"
+    )
+    resume_parser.add_argument(
+        "--agent-type",
+        type=str,
+        choices=["heuristic", "llm"],
+        default="heuristic",
+        help="Agent type (default: heuristic)",
+    )
+    resume_parser.add_argument(
+        "--model", type=str, default="qwen3:8b", help="LLM model name"
+    )
+    resume_parser.add_argument(
+        "--llm-url",
+        type=str,
+        default="http://localhost:11434/v1",
+        help="LLM API base URL",
+    )
+    resume_parser.add_argument(
+        "--llm-api-key", type=str, default="", help="API key for remote LLM providers"
     )
 
     return parser
@@ -161,6 +186,13 @@ def _cmd_run(args: argparse.Namespace) -> None:
             f"agents={config.population_size}"
         )
 
+    # Set up early stopping
+    stop_condition = None
+    if args.max_idle_ticks > 0:
+        from evomarket.simulation.runner import idle_streak_stop
+
+        stop_condition = idle_streak_stop(args.max_idle_ticks)
+
     start = time.time()
     result = run_episode(
         config,
@@ -168,6 +200,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
         output_dir=output_dir,
         enable_logging=not fast_mode,
         tick_callback=_llm_tick_callback if is_llm else None,
+        stop_condition=stop_condition,
     )
     elapsed = time.time() - start
 
@@ -238,7 +271,6 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
 
 def _cmd_resume(args: argparse.Namespace) -> None:
     """Execute the 'resume' subcommand."""
-    from evomarket.agents.heuristic_agent import HeuristicAgentFactory
     from evomarket.simulation.runner import resume_from_checkpoint
 
     checkpoint_path = Path(args.checkpoint)
@@ -253,7 +285,22 @@ def _cmd_resume(args: argparse.Namespace) -> None:
         config = SimulationConfig()
 
     output_dir = Path(args.output_dir) if args.output_dir else None
-    factory = HeuristicAgentFactory(config)
+
+    is_llm = args.agent_type == "llm"
+    if is_llm:
+        from evomarket.agents.llm_agent import LLMAgentFactory
+        from evomarket.agents.llm_backend import LLMBackend
+
+        backend = LLMBackend(
+            model=args.model,
+            base_url=args.llm_url,
+            api_key=args.llm_api_key,
+        )
+        factory = LLMAgentFactory(backend, config)
+    else:
+        from evomarket.agents.heuristic_agent import HeuristicAgentFactory
+
+        factory = HeuristicAgentFactory(config)
 
     print(f"Resuming from {checkpoint_path}...")
     start = time.time()

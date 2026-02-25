@@ -27,6 +27,22 @@ from evomarket.simulation.config import SimulationConfig
 
 
 # ---------------------------------------------------------------------------
+# RNG serialization helpers
+# ---------------------------------------------------------------------------
+
+
+def _save_rng(rng: random.Random) -> list:
+    """Serialize RNG state to a JSON-compatible list."""
+    state = rng.getstate()
+    return [state[0], list(state[1]), state[2]]
+
+
+def _restore_rng(rng: random.Random, data: list) -> None:
+    """Restore RNG state from serialized data."""
+    rng.setstate((data[0], tuple(data[1]), data[2]))
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -89,6 +105,18 @@ class HarvesterAgent(BaseAgent):
 
     def on_spawn(self, agent_id: str, config: SimulationConfig) -> None:
         self._agent_id = agent_id
+
+    def get_state(self) -> dict:
+        return {
+            "state": self._state.value,
+            "ticks_in_state": self._ticks_in_state,
+            "rng": _save_rng(self._rng),
+        }
+
+    def set_state(self, state: dict) -> None:
+        self._state = HarvesterState(state["state"])
+        self._ticks_in_state = state["ticks_in_state"]
+        _restore_rng(self._rng, state["rng"])
 
     def decide(self, obs: AgentObservation) -> AgentTurnResult:
         self._ticks_in_state += 1
@@ -168,6 +196,26 @@ class TraderAgent(BaseAgent):
     def on_spawn(self, agent_id: str, config: SimulationConfig) -> None:
         self._agent_id = agent_id
 
+    def get_state(self) -> dict:
+        # Serialize price_memory with string keys for JSON compat
+        pm = {
+            node_id: {c.value: p for c, p in prices.items()}
+            for node_id, prices in self._price_memory.items()
+        }
+        return {
+            "price_memory": pm,
+            "ticks_at_node": self._ticks_at_node,
+            "rng": _save_rng(self._rng),
+        }
+
+    def set_state(self, state: dict) -> None:
+        self._price_memory = defaultdict(dict)
+        for node_id, prices in state.get("price_memory", {}).items():
+            for cname, p in prices.items():
+                self._price_memory[node_id][CommodityType(cname)] = p
+        self._ticks_at_node = state.get("ticks_at_node", 0)
+        _restore_rng(self._rng, state["rng"])
+
     def decide(self, obs: AgentObservation) -> AgentTurnResult:
         # Record prices at current node
         for commodity, price in obs.node_info.npc_prices.items():
@@ -244,6 +292,13 @@ class SocialAgent(BaseAgent):
 
     def on_spawn(self, agent_id: str, config: SimulationConfig) -> None:
         self._agent_id = agent_id
+
+    def get_state(self) -> dict:
+        return {"ticks_at_node": self._ticks_at_node, "rng": _save_rng(self._rng)}
+
+    def set_state(self, state: dict) -> None:
+        self._ticks_at_node = state.get("ticks_at_node", 0)
+        _restore_rng(self._rng, state["rng"])
 
     def decide(self, obs: AgentObservation) -> AgentTurnResult:
         self._ticks_at_node += 1
@@ -322,6 +377,12 @@ class HoarderAgent(BaseAgent):
     def on_spawn(self, agent_id: str, config: SimulationConfig) -> None:
         self._agent_id = agent_id
 
+    def get_state(self) -> dict:
+        return {"rng": _save_rng(self._rng)}
+
+    def set_state(self, state: dict) -> None:
+        _restore_rng(self._rng, state["rng"])
+
     def decide(self, obs: AgentObservation) -> AgentTurnResult:
         action = self._pick_action(obs)
         return AgentTurnResult(action=action)
@@ -381,6 +442,13 @@ class ExplorerAgent(BaseAgent):
 
     def on_spawn(self, agent_id: str, config: SimulationConfig) -> None:
         self._agent_id = agent_id
+
+    def get_state(self) -> dict:
+        return {"ticks_at_node": self._ticks_at_node, "rng": _save_rng(self._rng)}
+
+    def set_state(self, state: dict) -> None:
+        self._ticks_at_node = state.get("ticks_at_node", 0)
+        _restore_rng(self._rng, state["rng"])
 
     def decide(self, obs: AgentObservation) -> AgentTurnResult:
         self._ticks_at_node += 1

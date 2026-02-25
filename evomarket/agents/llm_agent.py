@@ -35,6 +35,14 @@ class LLMAgent(BaseAgent):
         """Store agent ID for prompt rendering."""
         self._agent_id = agent_id
 
+    def get_state(self) -> dict | None:
+        """Serialize scratchpad for checkpointing."""
+        return {"scratchpad": self._scratchpad}
+
+    def set_state(self, state: dict) -> None:
+        """Restore scratchpad from checkpoint."""
+        self._scratchpad = state.get("scratchpad", "")
+
     def decide(self, observation: AgentObservation) -> AgentTurnResult:
         """Render prompt, call LLM, parse response into an action."""
         try:

@@ -1,5 +1,7 @@
 ## ADDED Requirements
 
+**Cross-reference:** The availability predicates in `observation.py` (`_compute_action_availability`) mirror these validators to pre-compute which actions are available for prompt rendering. Changes to validation logic here should be reflected in the observation availability computation.
+
 ### Requirement: validate_action function signature
 The module SHALL export a `validate_action(agent_id: str, action: Action, world: WorldState) -> Action` function. It returns the action unchanged if valid, or an `IdleAction` if invalid.
 
