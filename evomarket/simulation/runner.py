@@ -130,6 +130,15 @@ class EpisodeResult:
 # ---------------------------------------------------------------------------
 
 
+def _agent_type_label(agent: BaseAgent) -> str:
+    """Return a descriptive type label for an agent.
+
+    Uses ``agent_type_label`` if set (e.g. ``"llm:haiku"``),
+    otherwise falls back to the class name.
+    """
+    return getattr(agent, "agent_type_label", type(agent).__name__)
+
+
 @dataclass
 class _AgentRecord:
     """Internal record tracking an agent through its lifetime."""
@@ -195,7 +204,7 @@ def run_episode(
     for agent_id in world.agents:
         agent = agent_factory.create_agent(agent_id)
         agent.on_spawn(agent_id, config)
-        agent_type = type(agent).__name__
+        agent_type = _agent_type_label(agent)
         registry[agent_id] = _AgentRecord(
             agent_id=agent_id,
             agent_type=agent_type,
@@ -270,7 +279,7 @@ def run_episode(
                 if sr.agent_id not in registry:
                     agent = agent_factory.create_agent(sr.agent_id)
                     agent.on_spawn(sr.agent_id, config)
-                    agent_type = type(agent).__name__
+                    agent_type = _agent_type_label(agent)
                     registry[sr.agent_id] = _AgentRecord(
                         agent_id=sr.agent_id,
                         agent_type=agent_type,
@@ -287,6 +296,10 @@ def run_episode(
             event_logger.log_agent_snapshots(tick_num, world)
             event_logger.log_npc_snapshots(tick_num, world)
             event_logger.flush_tick()
+
+            # Incremental result summary (so viz can read mid-run)
+            if output_dir is not None:
+                _save_incremental_result(world, registry, tick_metrics_list, output_dir)
 
             # Checkpoint
             if (
@@ -477,7 +490,7 @@ def resume_from_checkpoint(
                 agent.on_spawn(sr.agent_id, config)
                 registry[sr.agent_id] = _AgentRecord(
                     agent_id=sr.agent_id,
-                    agent_type=type(agent).__name__,
+                    agent_type=_agent_type_label(agent),
                     agent=agent,
                     spawn_tick=tick_num,
                 )
@@ -711,6 +724,28 @@ def _compute_episode_metrics(
         final_treasury=world.treasury,
         final_agents_alive=sum(1 for a in world.agents.values() if a.alive),
     )
+
+
+def _save_incremental_result(
+    world: WorldState,
+    registry: dict[str, _AgentRecord],
+    tick_metrics_list: list[TickMetrics],
+    output_dir: Path,
+) -> None:
+    """Write a partial result.json so visualization can read mid-run."""
+    ticks_executed = len(tick_metrics_list)
+    agent_summaries = _build_agent_summaries(world, registry, ticks_executed)
+    episode_metrics = _compute_episode_metrics(
+        world, tick_metrics_list, agent_summaries, ticks_executed
+    )
+    result = EpisodeResult(
+        config=None,  # type: ignore[arg-type]
+        final_world_state=world,
+        tick_metrics=tick_metrics_list,
+        agent_summaries=agent_summaries,
+        episode_metrics=episode_metrics,
+    )
+    _save_result_summary(result, output_dir)
 
 
 def _save_result_summary(result: EpisodeResult, output_dir: Path) -> None:

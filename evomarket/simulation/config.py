@@ -64,6 +64,7 @@ class SimulationConfig:
 
     # Agents
     agent_mix: dict[str, int] = field(default_factory=_default_agent_mix)
+    llm_backends: dict[str, dict] = field(default_factory=dict)
 
     # Debug
     verify_invariant_every_phase: bool = False
@@ -88,11 +89,21 @@ class SimulationConfig:
             "llm",
         }
         for agent_type in self.agent_mix:
-            if agent_type not in valid_types:
-                raise ValueError(
-                    f"Unknown agent type in agent_mix: {agent_type!r}. "
-                    f"Valid types: {sorted(valid_types)}"
-                )
+            if agent_type in valid_types:
+                continue
+            if agent_type.startswith("llm:"):
+                backend_name = agent_type[4:]
+                if backend_name not in self.llm_backends:
+                    raise ValueError(
+                        f"agent_mix references 'llm:{backend_name}' but no "
+                        f"matching entry in llm_backends. "
+                        f"Available backends: {sorted(self.llm_backends)}"
+                    )
+                continue
+            raise ValueError(
+                f"Unknown agent type in agent_mix: {agent_type!r}. "
+                f"Valid types: {sorted(valid_types)} or 'llm:<backend_name>'"
+            )
 
         if self.total_credit_supply < self.starting_credits * self.population_size:
             raise ValueError(

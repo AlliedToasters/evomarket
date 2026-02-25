@@ -1,0 +1,39 @@
+{
+  "seed": 42,
+  "num_nodes": 15,
+  "num_commodity_types": 4,
+  "total_credit_supply": 10000.0,
+  "survival_tax": 1.5,
+  "starting_credits": 50.0,
+  "npc_base_price": 5.0,
+  "npc_stockpile_capacity": 50,
+  "npc_budget_replenish_rate": 30.0,
+  "npc_stockpile_decay_rate": 0.1,
+  "treasury_min_reserve": 100.0,
+  "resource_spawn_rate": 1.0,
+  "node_resource_cap": 20,
+  "population_size": 8,
+  "spawn_grace_period": 5,
+  "max_open_orders": 10,
+  "max_pending_trades": 3,
+  "death_treasury_return_pct": 0.5,
+  "death_local_share_pct": 0.5,
+  "ticks_per_episode": 100,
+  "checkpoint_interval": 10,
+  "agent_mix": {
+    "harvester": 1,
+    "trader": 1,
+    "llm:llama8b": 3,
+    "llm:haiku": 3
+  },
+  "llm_backends": {
+    "llama8b": {
+      "model": "meta-llama/llama-3.1-8b-instruct",
+      "base_url": "https://openrouter.ai/api/v1"
+    },
+    "haiku": {
+      "model": "anthropic/claude-3-haiku",
+      "base_url": "https://openrouter.ai/api/v1"
+    }
+  }
+}

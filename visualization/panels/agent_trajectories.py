@@ -44,7 +44,7 @@ def render(episode_dir: str) -> None:
         st.subheader("Credit Balance Over Time")
 
         type_domain = sorted(filtered["agent_type"].unique())
-        type_range = [common.AGENT_TYPE_COLORS.get(t, "#757575") for t in type_domain]
+        type_range = [common.get_agent_color(t) for t in type_domain]
 
         chart = (
             alt.Chart(filtered)
@@ -67,6 +67,24 @@ def render(episode_dir: str) -> None:
     st.subheader("Agent Summaries")
     summaries = data.load_agent_summaries(episode_dir)
 
+    # Resolve llm:* types to model names from config
+    try:
+        config = data.load_config(episode_dir)
+        llm_backends = config.get("llm_backends", {})
+    except Exception:
+        config = {}
+        llm_backends = {}
+
+    def _resolve_model(agent_type: str) -> str:
+        if agent_type.startswith("llm:"):
+            backend_name = agent_type[4:]
+            spec = llm_backends.get(backend_name, {})
+            return spec.get("model", backend_name)
+        if agent_type == "llm":
+            # Bare "llm" — try to get model from top-level config
+            return config.get("model", "llm")
+        return ""
+
     if summaries.empty:
         st.warning("No agent summary data available (result.json missing or empty).")
     else:
@@ -86,6 +104,8 @@ def render(episode_dir: str) -> None:
             summaries["max_credits"] = 0.0
             summaries["cumulative_credits"] = 0.0
 
+        summaries["model"] = summaries["agent_type"].apply(_resolve_model)
+
         summaries_sorted = summaries.sort_values("net_worth", ascending=False)
         st.dataframe(
             summaries_sorted,
@@ -94,6 +114,7 @@ def render(episode_dir: str) -> None:
             column_config={
                 "agent_id": "Agent ID",
                 "agent_type": "Type",
+                "model": "Model",
                 "net_worth": st.column_config.NumberColumn(
                     "Final Net Worth", format="%.2f"
                 ),

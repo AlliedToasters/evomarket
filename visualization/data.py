@@ -206,7 +206,7 @@ def load_npc_snapshots(db_path: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_agent_summaries(episode_dir: str) -> pd.DataFrame:
     """Load per-agent summary stats from result.json as a DataFrame.
 
@@ -231,11 +231,7 @@ def load_agent_summaries(episode_dir: str) -> pd.DataFrame:
     records = []
     for agent in result.get("agent_summaries", []):
         raw_type = agent.get("agent_type", "")
-        short_type = (
-            raw_type.removesuffix("Agent").lower()
-            if raw_type.endswith("Agent")
-            else raw_type.lower()
-        )
+        short_type = _normalize_agent_type(raw_type)
         records.append(
             {
                 "agent_id": agent["agent_id"],
@@ -253,7 +249,7 @@ def load_agent_summaries(episode_dir: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_config(episode_dir: str) -> dict:
     """Load config.json from the episode directory."""
     path = Path(episode_dir) / "config.json"
@@ -310,14 +306,14 @@ def load_graph_topology(episode_dir: str) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_result(episode_dir: str) -> dict:
     """Load result.json from the episode directory."""
     path = Path(episode_dir) / "result.json"
     return json.loads(path.read_text())
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_agent_types(episode_dir: str) -> dict[str, str]:
     """Extract agent_id → agent_type mapping from result.json.
 
@@ -328,9 +324,20 @@ def load_agent_types(episode_dir: str) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for agent in result.get("agent_summaries", []):
         raw = agent["agent_type"]
-        # Normalize "HarvesterAgent" → "harvester", "RandomAgent" → "random", etc.
-        short = (
-            raw.removesuffix("Agent").lower() if raw.endswith("Agent") else raw.lower()
-        )
+        short = _normalize_agent_type(raw)
         mapping[agent["agent_id"]] = short
     return mapping
+
+
+def _normalize_agent_type(raw: str) -> str:
+    """Normalize an agent type string for display.
+
+    - ``"HarvesterAgent"`` → ``"harvester"``
+    - ``"llm:haiku"`` → ``"llm:haiku"`` (preserved)
+    - ``"LLMAgent"`` → ``"llm"``
+    """
+    if raw.startswith("llm:"):
+        return raw.lower()
+    if raw == "LLMAgent":
+        return "llm"
+    return raw.removesuffix("Agent").lower() if raw.endswith("Agent") else raw.lower()

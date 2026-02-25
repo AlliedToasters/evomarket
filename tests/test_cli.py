@@ -44,6 +44,23 @@ class TestArgumentParsing:
         assert exc.value.code == 0
 
 
+class TestAgentModeDetection:
+    def test_default_heuristic(self) -> None:
+        parser = _create_parser()
+        args = parser.parse_args(["run"])
+        assert args.agent_type is None  # auto-detect
+
+    def test_explicit_mixed(self) -> None:
+        parser = _create_parser()
+        args = parser.parse_args(["run", "--agent-type", "mixed"])
+        assert args.agent_type == "mixed"
+
+    def test_explicit_llm(self) -> None:
+        parser = _create_parser()
+        args = parser.parse_args(["run", "--agent-type", "llm"])
+        assert args.agent_type == "llm"
+
+
 class TestRunCommand:
     def test_fast_mode(self, tmp_path: Path) -> None:
         """Fast mode should run without creating output files."""
