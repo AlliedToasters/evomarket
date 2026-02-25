@@ -22,7 +22,33 @@ AGENT_TYPE_COLORS: dict[str, str] = {
     "hoarder": "#F57F17",
     "explorer": "#00838F",
     "random": "#757575",
+    "llm": "#E53935",
 }
+
+# Palette for dynamically-named LLM backends (llm:haiku, llm:grok, etc.)
+_LLM_BACKEND_COLORS: list[str] = [
+    "#E53935",  # red
+    "#8E24AA",  # purple
+    "#FF6F00",  # amber
+    "#00897B",  # teal
+    "#3949AB",  # indigo
+    "#C62828",  # dark red
+    "#6A1B9A",  # deep purple
+    "#00695C",  # dark teal
+]
+
+
+def get_agent_color(agent_type: str, _seen: dict[str, str] = {}) -> str:
+    """Return a color for an agent type, auto-assigning for llm:* types."""
+    if agent_type in AGENT_TYPE_COLORS:
+        return AGENT_TYPE_COLORS[agent_type]
+    if agent_type in _seen:
+        return _seen[agent_type]
+    idx = len(_seen) % len(_LLM_BACKEND_COLORS)
+    color = _LLM_BACKEND_COLORS[idx]
+    _seen[agent_type] = color
+    return color
+
 
 NODE_TYPE_COLORS: dict[str, str] = {
     "RESOURCE": "#66BB6A",

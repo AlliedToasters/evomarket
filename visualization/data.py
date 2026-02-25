@@ -231,11 +231,7 @@ def load_agent_summaries(episode_dir: str) -> pd.DataFrame:
     records = []
     for agent in result.get("agent_summaries", []):
         raw_type = agent.get("agent_type", "")
-        short_type = (
-            raw_type.removesuffix("Agent").lower()
-            if raw_type.endswith("Agent")
-            else raw_type.lower()
-        )
+        short_type = _normalize_agent_type(raw_type)
         records.append(
             {
                 "agent_id": agent["agent_id"],
@@ -328,9 +324,18 @@ def load_agent_types(episode_dir: str) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for agent in result.get("agent_summaries", []):
         raw = agent["agent_type"]
-        # Normalize "HarvesterAgent" → "harvester", "RandomAgent" → "random", etc.
-        short = (
-            raw.removesuffix("Agent").lower() if raw.endswith("Agent") else raw.lower()
-        )
+        short = _normalize_agent_type(raw)
         mapping[agent["agent_id"]] = short
     return mapping
+
+
+def _normalize_agent_type(raw: str) -> str:
+    """Normalize an agent type string for display.
+
+    - ``"HarvesterAgent"`` → ``"harvester"``
+    - ``"llm:haiku"`` → ``"llm:haiku"`` (preserved)
+    - ``"LLMAgent"`` → ``"llm"``
+    """
+    if raw.startswith("llm:") or raw.startswith("llm"):
+        return raw.lower()
+    return raw.removesuffix("Agent").lower() if raw.endswith("Agent") else raw.lower()

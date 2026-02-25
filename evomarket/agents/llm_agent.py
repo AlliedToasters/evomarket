@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -26,10 +27,11 @@ class LLMAgent(BaseAgent):
     Orchestrates: render_prompt → backend.generate → parse_response
     """
 
-    def __init__(self, backend: LLMBackend) -> None:
+    def __init__(self, backend: LLMBackend, agent_type_label: str = "llm") -> None:
         self._backend = backend
         self._agent_id: str = ""
         self._scratchpad: str = ""
+        self.agent_type_label = agent_type_label
 
     def on_spawn(self, agent_id: str, config: SimulationConfig) -> None:
         """Store agent ID for prompt rendering."""
@@ -43,12 +45,51 @@ class LLMAgent(BaseAgent):
         """Restore scratchpad from checkpoint."""
         self._scratchpad = state.get("scratchpad", "")
 
+    @property
+    def model_tag(self) -> str:
+        """Short identifier: model name for logging."""
+        return self._backend.model
+
+    def _log_decide(self, raw_response: str, action: object, elapsed: float) -> None:
+        """Log per-call diagnostics tagged with model and agent ID."""
+        model = self.model_tag
+        action_name = type(action).__name__
+        if not raw_response or not raw_response.strip():
+            logger.warning(
+                "[%s] %s: empty response (%.1fs) → idle",
+                model,
+                self._agent_id,
+                elapsed,
+            )
+        elif action_name == "IdleAction" and raw_response.strip():
+            # Got a response but couldn't parse an action
+            snippet = raw_response.strip()[:120].replace("\n", " ")
+            logger.warning(
+                "[%s] %s: parse failed (%.1fs) → idle. Response: %s",
+                model,
+                self._agent_id,
+                elapsed,
+                snippet,
+            )
+        else:
+            logger.info(
+                "[%s] %s: %s (%.1fs)",
+                model,
+                self._agent_id,
+                action_name,
+                elapsed,
+            )
+
     def decide(self, observation: AgentObservation) -> AgentTurnResult:
         """Render prompt, call LLM, parse response into an action."""
         try:
             prompt = render_prompt(observation, self._scratchpad, self._agent_id)
+            t0 = time.monotonic()
             raw_response = self._backend.generate(prompt)
+            elapsed = time.monotonic() - t0
             action, scratchpad_update = parse_response(raw_response)
+
+            self._log_decide(raw_response, action, elapsed)
 
             # Update internal scratchpad if the LLM provided one
             if scratchpad_update is not None:
@@ -60,7 +101,10 @@ class LLMAgent(BaseAgent):
             )
         except Exception:
             logger.warning(
-                "LLMAgent %s decide() failed, using idle", self._agent_id, exc_info=True
+                "[%s] %s: decide() exception, using idle",
+                self.model_tag,
+                self._agent_id,
+                exc_info=True,
             )
             return AgentTurnResult(action=IdleAction())
 
@@ -70,8 +114,12 @@ class LLMAgent(BaseAgent):
         """Async version of decide() for parallel LLM inference."""
         try:
             prompt = render_prompt(observation, self._scratchpad, self._agent_id)
+            t0 = time.monotonic()
             raw_response = await self._backend.generate_async(prompt, session)
+            elapsed = time.monotonic() - t0
             action, scratchpad_update = parse_response(raw_response)
+
+            self._log_decide(raw_response, action, elapsed)
 
             if scratchpad_update is not None:
                 self._scratchpad = scratchpad_update
@@ -82,7 +130,8 @@ class LLMAgent(BaseAgent):
             )
         except Exception:
             logger.warning(
-                "LLMAgent %s decide_async() failed, using idle",
+                "[%s] %s: decide_async() exception, using idle",
+                self.model_tag,
                 self._agent_id,
                 exc_info=True,
             )
@@ -152,7 +201,7 @@ class MixedAgentFactory(AgentFactory):
                     f"No LLM backend configured for {agent_type!r}. "
                     f"Available: {sorted(self._llm_backends)}"
                 )
-            agent: BaseAgent = LLMAgent(backend)
+            agent: BaseAgent = LLMAgent(backend, agent_type_label=agent_type)
             agent.on_spawn(agent_id, self._config)
             return agent
 

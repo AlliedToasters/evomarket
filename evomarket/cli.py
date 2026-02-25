@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sqlite3
 import sys
 import time
@@ -252,13 +253,18 @@ def _cmd_run(args: argparse.Namespace) -> None:
 
         stop_condition = idle_streak_stop(args.max_idle_ticks)
 
+    tick_callback = None
+    if has_llm:
+        tracker = _LLMTickTracker()
+        tick_callback = tracker.tick_callback
+
     start = time.time()
     result = run_episode(
         config,
         factory,
         output_dir=output_dir,
         enable_logging=not fast_mode,
-        tick_callback=_llm_tick_callback if has_llm else None,
+        tick_callback=tick_callback,
         stop_condition=stop_condition,
     )
     elapsed = time.time() - start
@@ -283,9 +289,69 @@ def _cmd_run(args: argparse.Namespace) -> None:
         print(f"\nResults saved to {output_dir}/")
 
 
-def _llm_tick_callback(tick_num: int, wall_time: float) -> None:
-    """Print per-tick wall time for LLM mode."""
-    print(f"  tick {tick_num}: {wall_time:.2f}s")
+class _LLMTickTracker:
+    """Collects per-model stats from LLMAgent log records between ticks."""
+
+    def __init__(self) -> None:
+        import re
+
+        self._pattern = re.compile(r"^\[([^\]]+)\] (agent_\w+): (.+?) \((\d+\.\d+)s\)")
+        self._records: list[
+            tuple[str, str, str, float]
+        ] = []  # model, agent, outcome, secs
+
+        # Install a log handler on the llm_agent logger to capture records
+        self._handler = logging.Handler()
+        self._handler.emit = self._capture  # type: ignore[assignment]
+        self._handler.setLevel(logging.DEBUG)
+        llm_logger = logging.getLogger("evomarket.agents.llm_agent")
+        llm_logger.addHandler(self._handler)
+        llm_logger.setLevel(logging.DEBUG)
+
+    def _capture(self, record: logging.LogRecord) -> None:  # type: ignore[override]
+        import re
+
+        msg = record.getMessage()
+        m = re.match(r"^\[([^\]]+)\] (agent_\w+): (.+?) \((\d+\.\d+)s\)", msg)
+        if m:
+            model, agent_id, outcome, secs = (
+                m.group(1),
+                m.group(2),
+                m.group(3),
+                float(m.group(4)),
+            )
+            self._records.append((model, agent_id, outcome, secs))
+
+    def tick_callback(self, tick_num: int, wall_time: float) -> None:
+        records = self._records
+        self._records = []
+        print(f"  tick {tick_num}: {wall_time:.2f}s")
+        if not records:
+            return
+        # Aggregate per model
+        from collections import defaultdict
+
+        stats: dict[str, dict] = defaultdict(
+            lambda: {"ok": 0, "empty": 0, "parse_fail": 0, "total_s": 0.0, "calls": 0}
+        )
+        for model, _agent_id, outcome, secs in records:
+            s = stats[model]
+            s["calls"] += 1
+            s["total_s"] += secs
+            if "empty response" in outcome:
+                s["empty"] += 1
+            elif "parse failed" in outcome:
+                s["parse_fail"] += 1
+            else:
+                s["ok"] += 1
+        for model, s in sorted(stats.items()):
+            avg = s["total_s"] / max(s["calls"], 1)
+            parts = [f"{s['ok']}ok"]
+            if s["empty"]:
+                parts.append(f"{s['empty']}empty")
+            if s["parse_fail"]:
+                parts.append(f"{s['parse_fail']}parse_fail")
+            print(f"    {model}: {'/'.join(parts)}  avg={avg:.1f}s")
 
 
 def _cmd_analyze(args: argparse.Namespace) -> None:
