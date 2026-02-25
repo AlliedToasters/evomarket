@@ -8,7 +8,7 @@ The system SHALL provide a CLI entry point via `python -m evomarket` that dispat
 - **THEN** a help message is displayed listing available subcommands
 
 ### Requirement: Run subcommand
-The `run` subcommand SHALL execute a single episode and save results. It SHALL accept `--config` (path to JSON config file), `--seed` (integer override), `--output-dir` (results directory), `--fast` (disable logging and checkpoints), `--ticks` (override ticks_per_episode), `--agent-type` (heuristic or llm, default: heuristic), `--model` (LLM model name, default: qwen3:8b), `--llm-url` (LLM API base URL, default: http://localhost:11434/v1), `--llm-api-key` (API key for remote providers, default: empty), and `--population` (override population_size).
+The `run` subcommand SHALL execute a single episode and save results. It SHALL accept `--config` (path to JSON config file), `--seed` (integer override), `--output-dir` (results directory), `--fast` (disable logging and checkpoints), `--ticks` (override ticks_per_episode), `--agent-type` (heuristic or llm, default: heuristic), `--model` (LLM model name, default: qwen3:8b), `--llm-url` (LLM API base URL, default: http://localhost:11434/v1), `--llm-api-key` (API key for remote providers, default: empty), `--population` (override population_size), and `--max-idle-ticks` (early stop after N ticks with no productive actions, default: 0/disabled).
 
 #### Scenario: Run with defaults
 - **WHEN** `python -m evomarket run` is executed
@@ -38,6 +38,10 @@ The `run` subcommand SHALL execute a single episode and save results. It SHALL a
 - **WHEN** `python -m evomarket run --population 5` is executed
 - **THEN** the simulation runs with 5 agents regardless of the default population_size
 
+#### Scenario: Idle streak early stop
+- **WHEN** `python -m evomarket run --max-idle-ticks 10` is executed and no productive actions occur for 10 consecutive ticks
+- **THEN** the simulation stops early and saves partial results
+
 ### Requirement: Analyze subcommand
 The `analyze` subcommand SHALL load a completed episode's SQLite database and print summary statistics.
 
@@ -46,11 +50,15 @@ The `analyze` subcommand SHALL load a completed episode's SQLite database and pr
 - **THEN** summary statistics (total ticks, survivors, trades, Gini, etc.) are printed to stdout
 
 ### Requirement: Resume subcommand
-The `resume` subcommand SHALL load a checkpoint file and continue the episode from the checkpointed tick.
+The `resume` subcommand SHALL load a checkpoint file and continue the episode from the checkpointed tick. It SHALL accept `--config` (path to JSON config file), `--output-dir` (results directory), `--agent-type` (heuristic or llm, default: heuristic), `--model` (LLM model name), `--llm-url` (LLM API base URL), and `--llm-api-key` (API key for remote providers).
 
 #### Scenario: Resume from checkpoint
 - **WHEN** `python -m evomarket resume checkpoint_tick_250.json` is executed
 - **THEN** the episode resumes from tick 251 and runs to completion
+
+#### Scenario: Resume with LLM agents
+- **WHEN** `python -m evomarket resume checkpoint.json --agent-type llm --model qwen3:8b` is executed
+- **THEN** the episode resumes using LLM agents with the specified model and backend
 
 ### Requirement: Output directory structure
 The `run` subcommand SHALL create an output directory containing: `config.json` (the config used), `episode.sqlite` (event log), `checkpoints/` (checkpoint files), and `result.json` (final EpisodeResult summary).

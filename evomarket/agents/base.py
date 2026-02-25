@@ -24,6 +24,13 @@ class BaseAgent(ABC):
         """Called once when the agent is created, before any decide() calls."""
         ...
 
+    def get_state(self) -> dict | None:
+        """Serialize agent-internal state for checkpointing. Returns None if not supported."""
+        return None
+
+    def set_state(self, state: dict) -> None:
+        """Restore agent-internal state from a checkpoint. No-op by default."""
+
 
 class AgentFactory(ABC):
     """Abstract factory for creating agent instances."""
