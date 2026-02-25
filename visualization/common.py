@@ -26,12 +26,13 @@ AGENT_TYPE_COLORS: dict[str, str] = {
 }
 
 # Palette for dynamically-named LLM backends (llm:haiku, llm:grok, etc.)
+# Starts with colors distinct from the base "llm" red (#E53935).
 _LLM_BACKEND_COLORS: list[str] = [
-    "#E53935",  # red
     "#8E24AA",  # purple
     "#FF6F00",  # amber
     "#00897B",  # teal
     "#3949AB",  # indigo
+    "#E53935",  # red
     "#C62828",  # dark red
     "#6A1B9A",  # deep purple
     "#00695C",  # dark teal

@@ -72,6 +72,7 @@ def render(episode_dir: str) -> None:
         config = data.load_config(episode_dir)
         llm_backends = config.get("llm_backends", {})
     except Exception:
+        config = {}
         llm_backends = {}
 
     def _resolve_model(agent_type: str) -> str:
@@ -79,6 +80,9 @@ def render(episode_dir: str) -> None:
             backend_name = agent_type[4:]
             spec = llm_backends.get(backend_name, {})
             return spec.get("model", backend_name)
+        if agent_type == "llm":
+            # Bare "llm" — try to get model from top-level config
+            return config.get("model", "llm")
         return ""
 
     if summaries.empty:
