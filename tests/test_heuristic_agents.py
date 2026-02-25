@@ -56,6 +56,7 @@ def _make_obs(
             name="Test",
             node_type=node_type,
             adjacent_nodes=adjacent,
+            adjacent_node_info=[],
             npc_prices=npc_prices,
             resource_availability=resource_avail,
         ),

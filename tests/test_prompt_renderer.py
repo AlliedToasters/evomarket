@@ -94,6 +94,7 @@ def _make_observation(
             name="Iron Peak",
             node_type=node_type,
             adjacent_nodes=adjacent_nodes or ["node_trade_hub", "node_forest"],
+            adjacent_node_info=[],
             npc_prices=npc_prices or {},
             resource_availability=resource_availability or {},
         ),
@@ -222,7 +223,6 @@ class TestPreamble:
         prompt = render_prompt(obs, "", "agent_001")
         assert "ACTION:" in prompt
         assert "SCRATCHPAD:" in prompt
-        assert "REASONING:" in prompt
 
     def test_preamble_contains_valid_actions_header(self):
         obs = _make_observation()
@@ -431,11 +431,12 @@ class TestActionAvailabilityInPrompt:
         assert "propose_trade" in prompt
 
     def test_harvest_hidden_at_non_resource_node(self):
-        """harvest should not appear when can_harvest is False."""
+        """harvest should not appear in valid actions when can_harvest is False."""
         avail = _default_availability(can_harvest=False)
         obs = _make_observation(node_type="TRADE_HUB", action_availability=avail)
         prompt = render_prompt(obs, "", "agent_001")
-        assert "harvest" not in prompt
+        # "harvest" may appear in strategic hints but not as a valid action
+        assert "harvest  — gather resource" not in prompt
 
     def test_inspect_hidden_when_alone(self):
         """inspect should not appear when can_inspect is False."""

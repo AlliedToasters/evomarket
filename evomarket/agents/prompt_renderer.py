@@ -24,16 +24,16 @@ _PREAMBLE_TEMPLATE = """\
 === EVOMARKET AGENT ===
 You are {agent_id}. Survive by earning credits. Tax={tax_info}/tick. Credits=0 → death.
 
+HOW TO EARN CREDITS: move to a RESOURCE node → harvest → move to a TRADE_HUB → sell to NPC.
+RESOURCE nodes have harvestable commodities. TRADE_HUB nodes have NPC buyers.
+{strategic_hint}
+
 VALID ACTIONS THIS TICK (pick one):
 {valid_actions}
 
-Commodities: IRON, WOOD, STONE, HERBS. Prices in credits (e.g. 5.0).
-NPC buys at nodes: price = base*(1-stockpile/capacity). High stock=low price.
-
-RESPOND EXACTLY:
+RESPOND WITH EXACTLY ONE LINE starting with ACTION:
 ACTION: <action_string>
-SCRATCHPAD: <notes to remember next tick> (optional)
-REASONING: <brief explanation> (optional)"""
+SCRATCHPAD: <notes for next tick> (optional)"""
 
 
 def _get_valid_actions(obs: AgentObservation) -> list[str]:
@@ -44,9 +44,14 @@ def _get_valid_actions(obs: AgentObservation) -> list[str]:
 
     actions: list[str] = []
 
-    # Move
+    # Move — show node types to help navigation
     if avail.can_move:
-        nodes = ", ".join(avail.adjacent_nodes)
+        if obs.node_info.adjacent_node_info:
+            nodes = ", ".join(
+                f"{a.node_id}({a.node_type})" for a in obs.node_info.adjacent_node_info
+            )
+        else:
+            nodes = ", ".join(avail.adjacent_nodes)
         actions.append(f"  move <node_id>  — move to adjacent node ({nodes})")
 
     # Harvest
@@ -127,13 +132,59 @@ def _get_valid_actions(obs: AgentObservation) -> list[str]:
     return actions
 
 
+def _get_strategic_hint(obs: AgentObservation) -> str:
+    """Generate a context-sensitive strategic hint based on current situation."""
+    avail = obs.action_availability
+    node_type = obs.node_info.node_type
+    nearby_count = len(obs.agents_present)
+
+    # Crowding warning — makes competition salient
+    crowd_warning = ""
+    if nearby_count >= 3:
+        crowd_warning = (
+            f" WARNING: {nearby_count} other agents here — resources are shared and"
+            " will run out. Spread out to different RESOURCE nodes to avoid competition."
+        )
+
+    if node_type == "SPAWN":
+        return "HINT: You are at SPAWN. Move out to find resources." + crowd_warning
+    if avail and avail.can_harvest:
+        return (
+            "HINT: Resources available here! Use 'harvest' to gather them."
+            + crowd_warning
+        )
+    if avail and avail.can_sell_to_npc:
+        return "HINT: You have goods and there's an NPC buyer here. Sell for credits!"
+
+    inv_count = sum(obs.agent_state.inventory.values())
+    if inv_count > 0 and node_type == "RESOURCE":
+        return "HINT: You have inventory. Move to a TRADE_HUB to sell to NPC."
+    if inv_count > 0:
+        return "HINT: You have inventory. Find a TRADE_HUB with NPC buyers to sell."
+    if node_type == "TRADE_HUB":
+        adj_hubs = [
+            a for a in obs.node_info.adjacent_node_info if a.node_type == "TRADE_HUB"
+        ]
+        hint = "HINT: No inventory to sell. Move to a RESOURCE node to harvest."
+        if adj_hubs:
+            hub_names = ", ".join(a.node_id for a in adj_hubs)
+            hint += (
+                f" Other regions with different resources are reachable"
+                f" through: {hub_names}."
+            )
+        return hint + crowd_warning
+    return crowd_warning.lstrip()
+
+
 def _render_preamble(agent_id: str, scratchpad: str, obs: AgentObservation) -> str:
     """Render the preamble with contextually valid actions."""
     valid_actions = "\n".join(_get_valid_actions(obs))
+    strategic_hint = _get_strategic_hint(obs)
     return _PREAMBLE_TEMPLATE.format(
         agent_id=agent_id,
         tax_info="0.5cr",
         valid_actions=valid_actions,
+        strategic_hint=strategic_hint,
     )
 
 
@@ -174,7 +225,11 @@ def _render_world_state(obs: AgentObservation) -> str:
     # Node info
     n = obs.node_info
     lines.append(f"Node: {n.node_id} ({n.name}) type={n.node_type}")
-    lines.append(f"  Adjacent: {', '.join(n.adjacent_nodes)}")
+    if n.adjacent_node_info:
+        adj_parts = [f"{a.node_id}({a.node_type})" for a in n.adjacent_node_info]
+        lines.append(f"  Adjacent: {', '.join(adj_parts)}")
+    else:
+        lines.append(f"  Adjacent: {', '.join(n.adjacent_nodes)}")
 
     if n.npc_prices:
         prices = ", ".join(f"{c.value}={_mc(p)}" for c, p in n.npc_prices.items())
@@ -185,10 +240,11 @@ def _render_world_state(obs: AgentObservation) -> str:
         if avail:
             lines.append(f"  Resources: {', '.join(avail)}")
 
-    # Nearby agents
+    # Nearby agents — show count prominently for crowding awareness
     if obs.agents_present:
+        count = len(obs.agents_present)
         agents = ", ".join(a.agent_id for a in obs.agents_present)
-        lines.append(f"Nearby: {agents}")
+        lines.append(f"Nearby agents ({count}): {agents}")
 
     # Posted orders at node
     if obs.posted_orders:

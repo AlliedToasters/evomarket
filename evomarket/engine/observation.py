@@ -40,6 +40,14 @@ class AgentStateView:
 
 
 @dataclass(frozen=True)
+class AdjacentNodeInfo:
+    """Minimal info about an adjacent node to help with navigation."""
+
+    node_id: str
+    node_type: str
+
+
+@dataclass(frozen=True)
 class NodeView:
     """Information about the agent's current node."""
 
@@ -47,6 +55,7 @@ class NodeView:
     name: str
     node_type: str
     adjacent_nodes: list[str]
+    adjacent_node_info: list[AdjacentNodeInfo]
     npc_prices: dict[CommodityType, Millicredits]
     resource_availability: dict[CommodityType, int]
 
@@ -336,11 +345,22 @@ def generate_observations(world: WorldState) -> dict[str, AgentObservation]:
         for commodity, stockpile in node.resource_stockpile.items():
             resource_availability[commodity] = math.floor(stockpile)
 
+        # Build adjacent node info with types
+        adjacent_info = [
+            AdjacentNodeInfo(
+                node_id=adj_id,
+                node_type=world.nodes[adj_id].node_type.value,
+            )
+            for adj_id in node.adjacent_nodes
+            if adj_id in world.nodes
+        ]
+
         node_info = NodeView(
             node_id=node.node_id,
             name=node.name,
             node_type=node.node_type.value,
             adjacent_nodes=list(node.adjacent_nodes),
+            adjacent_node_info=adjacent_info,
             npc_prices=npc_prices,
             resource_availability=resource_availability,
         )

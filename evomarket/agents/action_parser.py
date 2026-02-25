@@ -40,11 +40,19 @@ def _normalize_commodity(text: str) -> CommodityType | None:
 
 
 def _parse_int(text: str) -> int | None:
-    """Parse an integer, returning None on failure."""
+    """Parse an integer, returning None on failure.
+
+    Strips common LLM formatting like 'x' prefix (e.g. 'x1' → 1).
+    """
+    s = text.strip().lstrip("xX")
     try:
-        return int(text.strip())
+        return int(s)
     except (ValueError, TypeError):
-        return None
+        # Try parsing as float and truncating (e.g. "1.0")
+        try:
+            return int(float(s))
+        except (ValueError, TypeError):
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -172,8 +180,10 @@ def _parse_post_order(args: list[str]) -> Action | None:
     if qty is None or qty <= 0:
         return None
     # Accept float prices (display credits) and convert to millicredits
+    # Strip common LLM formatting like '@' prefix (e.g. '@4.5' → 4.5)
+    price_str = args[3].lstrip("@")
     try:
-        price_raw = float(args[3])
+        price_raw = float(price_str)
     except (ValueError, TypeError):
         return None
     if price_raw <= 0:
